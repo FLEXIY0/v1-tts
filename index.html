@@ -159,9 +159,18 @@
     </div>
 
     <div class="row">
+      <span>preset</span>
+      <select id="preset">
+        <option value="v1">Improved SAM (V1)</option>
+        <option value="robot">Heavy robot</option>
+        <option value="human">Human (clean)</option>
+      </select>
+    </div>
+
+    <div class="row">
       <span>robot</span>
-      <input type="range" id="robot" min="0" max="100" step="5" value="40">
-      <span id="robot-v">40%</span>
+      <input type="range" id="robot" min="0" max="100" step="5" value="100">
+      <span id="robot-v">100%</span>
     </div>
 
     <div class="actions">
@@ -182,7 +191,7 @@
 import * as tts from './dist/piper.js';
 
 const $ = id => document.getElementById(id);
-const state = { token: 0, audio: null, rate: 1, robot: 0.4, session: null, voiceId: null };
+const state = { token: 0, audio: null, rate: 1, robot: 1, preset: null, session: null, voiceId: null };
 
 // First use of a voice downloads its model (~60 MB) from HuggingFace;
 // piper-tts-web caches it in OPFS, so subsequent runs are local.
@@ -254,6 +263,24 @@ function crushCurve(bits) {
   }
   return curve;
 }
+// Soft-clip drive: reedy, buzzy edge reminiscent of SAM's formant synthesis.
+function driveCurve(k) {
+  const n = 2048, curve = new Float32Array(n), a = 1 + k * 12;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.tanh(a * x) / Math.tanh(a);
+  }
+  return curve;
+}
+
+// preset = the timbre (character); the robot slider = how much of it to mix.
+// Presets keep Piper's clarity underneath, so the machine flavour never
+// makes the words unreadable — an intelligible take on the SAM/V1 sound.
+const PRESETS = {
+  human: { carrier: 0,  bits: 16, lp: 8000, drive: 0,    wet: 0    },
+  v1:    { carrier: 62, bits: 7,  lp: 3200, drive: 0.35, wet: 0.55 }, // improved SAM
+  robot: { carrier: 48, bits: 6,  lp: 2600, drive: 0.55, wet: 0.85 }  // heavier machine
+};
 function encodeWav(buf) {
   const ch = buf.getChannelData(0), rate = buf.sampleRate;
   const out = new Uint8Array(44 + ch.length * 2), v = new DataView(out.buffer);
@@ -271,28 +298,38 @@ function encodeWav(buf) {
   return new Blob([out], { type: 'audio/wav' });
 }
 async function robotize(blob, amount) {
-  if (amount <= 0) return blob;
+  const p = state.preset;
+  const wet = p.wet * amount; // slider scales the preset's character
+  if (wet <= 0) return blob;
   decodeCtx = decodeCtx || new (window.AudioContext || window.webkitAudioContext)();
   const decoded = await decodeCtx.decodeAudioData(await blob.arrayBuffer());
   const off = new OfflineAudioContext(1, decoded.length, decoded.sampleRate);
   const src = off.createBufferSource(); src.buffer = decoded;
 
-  const dry = off.createGain(); dry.gain.value = 1 - amount;
-  const wet = off.createGain(); wet.gain.value = amount * 1.1;
+  const dryG = off.createGain(); dryG.gain.value = 1 - wet;
+  const wetG = off.createGain(); wetG.gain.value = wet * 1.1;
 
-  const ring = off.createGain(); ring.gain.value = 0;
-  const carrier = off.createOscillator();
-  carrier.type = 'sine'; carrier.frequency.value = 55;
-  carrier.connect(ring.gain);
+  // wet chain: drive -> [ring mod] -> bit-crush -> lowpass
+  let node = src;
+  if (p.drive > 0) {
+    const drive = off.createWaveShaper(); drive.curve = driveCurve(p.drive);
+    node.connect(drive); node = drive;
+  }
+  if (p.carrier > 0) {
+    const ring = off.createGain(); ring.gain.value = 0;
+    const carrier = off.createOscillator();
+    carrier.type = 'sine'; carrier.frequency.value = p.carrier;
+    carrier.connect(ring.gain); carrier.start();
+    node.connect(ring); node = ring;
+  }
+  const crush = off.createWaveShaper(); crush.curve = crushCurve(p.bits);
+  const lp = off.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = p.lp;
+  node.connect(crush); crush.connect(lp);
 
-  const shaper = off.createWaveShaper(); shaper.curve = crushCurve(8);
-  const lp = off.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3600;
+  src.connect(dryG).connect(off.destination);
+  lp.connect(wetG).connect(off.destination);
 
-  src.connect(dry).connect(off.destination);
-  src.connect(ring); ring.connect(shaper); shaper.connect(lp);
-  lp.connect(wet).connect(off.destination);
-
-  carrier.start(); src.start();
+  src.start();
   return encodeWav(await off.startRendering());
 }
 
@@ -338,6 +375,9 @@ $('rate').addEventListener('input', e => {
   $('rate-v').textContent = state.rate.toFixed(1);
   if (state.audio) state.audio.playbackRate = state.rate;
 });
+
+state.preset = PRESETS[$('preset').value];
+$('preset').addEventListener('change', e => { state.preset = PRESETS[e.target.value]; });
 
 $('robot').addEventListener('input', e => {
   state.robot = +e.target.value / 100;

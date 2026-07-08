@@ -25,6 +25,13 @@ synthesized while the current one plays, so playback starts quickly.
 `rate` changes playback speed (0.5–2.0) without affecting pitch.
 `Download WAV` renders the whole text and stitches the chunks into one file.
 
+`preset` gives the clean voice a machine character with an offline Web
+Audio pass (soft-clip drive + ring modulation + bit-crush + lowpass):
+*Improved SAM (V1)* is the SAM/V1 robot sound kept intelligible over the
+neural voice, *Heavy robot* is more aggressive, *Human* is bypass. The
+`robot` slider scales how much of the preset's character is mixed in
+(0 % = clean voice). All of this runs in-browser — no extra downloads.
+
 `dist/piper.js` is `@mintplex-labs/piper-tts-web` bundled with esbuild,
 with `onnxruntime-web` pinned to 1.18.0 to match the WASM assets the page
 loads from the CDN (`esbuild entry.js --bundle --format=esm --minify` with
