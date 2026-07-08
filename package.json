@@ -1,7 +1,7 @@
 {
-  "name": "sam-js",
+  "name": "v1-tts",
   "version": "0.1.2",
-  "description": "SAM - The Software Automatic Mouth",
+  "description": "V1-TTS - ULTRAKILL-flavoured OS/2 speech synthesis terminal (SAM core)",
   "author": "Christian Schiffler <c.schiffler@cyberspectrum.de>",
   "private": false,
   "main": "dist/samjs.js",
@@ -68,17 +68,20 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/discordier/sam.git"
+    "url": "git+https://github.com/flexiy0/v1-tts.git"
   },
   "keywords": [
     "speech",
     "synthesis",
     "retro",
-    "c64"
+    "c64",
+    "ultrakill",
+    "v1",
+    "os2"
   ],
   "license": "SEE LICENSE IN README.md",
   "bugs": {
-    "url": "https://github.com/discordier/sam/issues"
+    "url": "https://github.com/flexiy0/v1-tts/issues"
   },
-  "homepage": "https://github.com/discordier/sam#readme"
+  "homepage": "https://github.com/flexiy0/v1-tts#readme"
 }
