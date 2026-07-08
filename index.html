@@ -187,6 +187,61 @@
     return { text: text, phonetic: false };
   }
 
+  // The synthesizer has a ~256-entry phoneme buffer; long input overflows it
+  // and intonation degrades into mush. Feed it one phrase at a time instead.
+  var MAX = 80;
+  function splitText(text) {
+    var out = [];
+    var sentences = text.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]*\s*/g) || [text];
+    sentences.forEach(function (s) {
+      s = s.trim();
+      while (s.length > MAX) {
+        var cut = s.lastIndexOf(',', MAX);
+        if (cut < MAX * 0.4) cut = s.lastIndexOf(' ', MAX);
+        if (cut <= 0) cut = MAX;
+        out.push(s.slice(0, cut + 1).trim());
+        s = s.slice(cut + 1).trim();
+      }
+      if (s) out.push(s);
+    });
+    return out;
+  }
+
+  var RATE = 22050;
+  var GAP = Math.round(RATE * 0.28); // inter-phrase silence, samples
+
+  function renderChunks(chunks) {
+    var sam = new SamJs(opts);
+    return chunks.map(function (c) {
+      var req = prepare(c);
+      var b = sam.buf8(req.text, req.phonetic);
+      if (!(b instanceof Uint8Array)) throw new Error('synthesis failed');
+      return b;
+    });
+  }
+
+  function downloadWav(bufs) {
+    var total = bufs.reduce(function (n, b) { return n + b.length; }, 0) + GAP * (bufs.length - 1);
+    var wav = new Uint8Array(44 + total);
+    var v = new DataView(wav.buffer);
+    var ascii = function (off, s) { for (var i = 0; i < s.length; i++) wav[off + i] = s.charCodeAt(i); };
+    ascii(0, 'RIFF');  v.setUint32(4, 36 + total, true);
+    ascii(8, 'WAVE');  ascii(12, 'fmt ');
+    v.setUint32(16, 16, true);   v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, RATE, true); v.setUint32(28, RATE, true);
+    v.setUint16(32, 1, true);    v.setUint16(34, 8, true);
+    ascii(36, 'data'); v.setUint32(40, total, true);
+    wav.fill(128, 44); // 8-bit unsigned silence
+    var pos = 44;
+    bufs.forEach(function (b) { wav.set(b, pos); pos += b.length + GAP; });
+    var url = URL.createObjectURL(new Blob([wav], { type: 'audio/vnd.wave' }));
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'v1-tts.wav';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function status(msg) { $('status').textContent = msg; }
 
   Object.keys(opts).forEach(function (p) {
@@ -196,21 +251,36 @@
     });
   });
 
+  var playToken = 0;
+
   $('speak').addEventListener('click', function () {
-    var req = prepare($('text').value);
-    status('Playing');
-    var done = function () { status('Ready'); };
-    var fail = function () { status('Synthesis failed'); };
-    try {
-      var p = new SamJs(opts).speak(req.text, req.phonetic);
-      if (p && typeof p.then === 'function') p.then(done, fail); else done();
-    } catch (e) { fail(); }
+    var token = ++playToken;
+    var chunks = splitText($('text').value);
+    if (!chunks.length) { status('Ready'); return; }
+    var sam = new SamJs(opts);
+    var i = 0;
+    (function next() {
+      if (token !== playToken) return;
+      if (i >= chunks.length) { status('Ready'); return; }
+      status(chunks.length > 1 ? 'Playing ' + (i + 1) + '/' + chunks.length : 'Playing');
+      var req = prepare(chunks[i++]);
+      var p;
+      try { p = sam.speak(req.text, req.phonetic); } catch (e) { status('Synthesis failed'); return; }
+      if (p && typeof p.then === 'function') {
+        p.then(function () { setTimeout(next, 280); }, function () { status('Synthesis failed'); });
+      } else {
+        next();
+      }
+    })();
   });
 
   $('download').addEventListener('click', function () {
-    var req = prepare($('text').value);
+    playToken++;
+    var chunks = splitText($('text').value);
+    if (!chunks.length) { status('Ready'); return; }
+    status('Rendering');
     try {
-      new SamJs(opts).download(req.text, req.phonetic);
+      downloadWav(renderChunks(chunks));
       status('Ready');
     } catch (e) { status('Synthesis failed'); }
   });
