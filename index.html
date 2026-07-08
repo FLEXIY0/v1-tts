@@ -143,8 +143,10 @@
     <div class="row">
       <span>voice</span>
       <select id="voice">
-        <option value="sam-v1">Microsoft Sam — V1 (authentic)</option>
-        <option value="sam-plain">Microsoft Sam — plain</option>
+        <option value="sam-v1">Microsoft Sam — V1 (200/180)</option>
+        <option value="sam-v1-aggressive">Microsoft Sam — V1 aggressive (200/250)</option>
+        <option value="sam-v1-dark">Microsoft Sam — V1 dark (90/130)</option>
+        <option value="sam-plain">Microsoft Sam — plain (100/150)</option>
         <option value="auto">Piper — auto (by language)</option>
         <option value="ru_RU-irina-medium">Piper — Irina (Russian)</option>
         <option value="ru_RU-ruslan-medium">Piper — Ruslan (Russian)</option>
@@ -193,7 +195,7 @@
 import * as tts from './dist/piper.js';
 
 const $ = id => document.getElementById(id);
-const state = { token: 0, audio: null, rate: 1, robot: 1, preset: null, session: null, voiceId: null };
+const state = { token: 0, audio: null, rate: 1, robot: 1, preset: null, session: null, voiceId: null, samProxyBad: false };
 
 // First use of a voice downloads its model (~60 MB) from HuggingFace;
 // piper-tts-web caches it in OPFS, so subsequent runs are local.
@@ -216,7 +218,18 @@ function voiceFor(text) {
 // served by tetyys.com. No CORS headers there, so we can't fetch()/decode the
 // bytes — but a media element may load it cross-origin, which is all playback
 // needs. Sam is an English formant synth, so Cyrillic is transliterated.
-const SAM = { 'sam-v1': { pitch: 200, speed: 180 }, 'sam-plain': { pitch: 100, speed: 100 } };
+// Microsoft Sam (SAPI4) limits, from tetyys /VoiceLimitations?voice=Sam:
+// pitch 50..200 (default 100), speed 30..450 (default 150). Requests outside
+// these 400/503, so values are clamped before sending. The community "V1" is
+// pitch 200 / speed 180; higher speed reads as aggressive, low pitch as dark.
+const SAM_LIMITS = { pitch: [50, 200], speed: [30, 450] };
+const SAM = {
+  'sam-v1': { pitch: 200, speed: 180 },
+  'sam-v1-aggressive': { pitch: 200, speed: 250 },
+  'sam-v1-dark': { pitch: 90, speed: 130 },
+  'sam-plain': { pitch: 100, speed: 150 }
+};
+const clamp = (v, [lo, hi]) => Math.max(lo, Math.min(hi, v));
 // Optional self-hosted CORS proxy (see proxy/sam-proxy.js). Set once via
 // ?proxy=<worker-url> and it is remembered. With a proxy the WAV bytes are
 // readable, so Sam gets reliable playback plus a real stitched download;
@@ -236,18 +249,27 @@ function forSam(text) {
     return lat === undefined ? ch : (ch === ch.toLowerCase() ? lat : lat.toUpperCase());
   });
 }
-function samUrl(text, cfg) {
-  const q = 'voice=Sam&pitch=' + cfg.pitch + '&speed=' + cfg.speed +
+function samQuery(text, cfg) {
+  return 'voice=Sam&pitch=' + clamp(cfg.pitch, SAM_LIMITS.pitch) +
+    '&speed=' + clamp(cfg.speed, SAM_LIMITS.speed) +
     '&text=' + encodeURIComponent(forSam(text));
-  return SAM_PROXY
-    ? SAM_PROXY + (SAM_PROXY.includes('?') ? '&' : '?') + q
-    : 'https://www.tetyys.com/SAPI4/SAPI4?' + q;
+}
+// Direct tetyys URL — playable in a media element from any origin.
+function samDirect(text, cfg) {
+  return 'https://www.tetyys.com/SAPI4/SAPI4?' + samQuery(text, cfg);
+}
+// Through the optional proxy — readable bytes for effects/stitched download.
+function samProxied(text, cfg) {
+  return SAM_PROXY + (SAM_PROXY.includes('?') ? '&' : '?') + samQuery(text, cfg);
 }
 async function samFetch(text, cfg) {
-  const r = await fetch(samUrl(text, cfg));
-  if (!r.ok) throw new Error('Sam proxy ' + r.status);
+  const r = await fetch(samProxied(text, cfg));
+  if (!r.ok) throw new Error('proxy ' + r.status);
   return await r.blob();
 }
+// Use the proxy only until it first fails (e.g. tetyys blocks the proxy's
+// datacenter IPs); after that fall back to direct playback for the session.
+function useProxy() { return SAM_PROXY && !state.samProxyBad; }
 
 function status(msg) { $('status').textContent = msg; }
 
@@ -448,12 +470,16 @@ $('speak').addEventListener('click', async () => {
   const sam = SAM[$('voice').value];
   try {
     if (sam) {
-      // With a proxy the bytes are readable, so play them as blobs (and the
-      // download can stitch); otherwise play the tetyys URL in a media element.
       for (let i = 0; i < chunks.length; i++) {
         status(chunks.length > 1 ? `Playing ${i + 1}/${chunks.length}` : 'Playing');
-        if (SAM_PROXY) await play(await samFetch(chunks[i], sam));
-        else await playUrl(samUrl(chunks[i], sam), false);
+        // Prefer the proxy (readable bytes); on its first failure drop to
+        // direct tetyys playback for the rest of the session.
+        let played = false;
+        if (useProxy()) {
+          try { await play(await samFetch(chunks[i], sam)); played = true; }
+          catch (e) { state.samProxyBad = true; }
+        }
+        if (!played) await playUrl(samDirect(chunks[i], sam), false);
         if (token !== state.token) return;
       }
       status('Ready');
@@ -491,23 +517,26 @@ $('download').addEventListener('click', async () => {
   const sam = SAM[$('voice').value];
   try {
     if (sam) {
-      if (SAM_PROXY) {
-        const blobs = [];
-        for (let i = 0; i < chunks.length; i++) {
-          status(chunks.length > 1 ? `Synthesizing ${i + 1}/${chunks.length}` : 'Synthesizing');
-          blobs.push(await samFetch(chunks[i], sam));
-          if (token !== state.token) return;
-        }
-        const url = URL.createObjectURL(await stitch(blobs));
-        const a = document.createElement('a');
-        a.href = url; a.download = 'v1-tts.wav'; a.click();
-        URL.revokeObjectURL(url);
-        status('Ready');
-      } else {
-        // Can't read tetyys bytes cross-origin to stitch; open the WAV instead.
-        window.open(samUrl(text.slice(0, 600), sam), '_blank', 'noopener');
-        status(text.length > 600 ? 'Opened WAV (first part; set a proxy to stitch)' : 'Opened WAV');
+      if (useProxy()) {
+        try {
+          const blobs = [];
+          for (let i = 0; i < chunks.length; i++) {
+            status(chunks.length > 1 ? `Synthesizing ${i + 1}/${chunks.length}` : 'Synthesizing');
+            blobs.push(await samFetch(chunks[i], sam));
+            if (token !== state.token) return;
+          }
+          const url = URL.createObjectURL(await stitch(blobs));
+          const a = document.createElement('a');
+          a.href = url; a.download = 'v1-tts.wav'; a.click();
+          URL.revokeObjectURL(url);
+          status('Ready');
+          return;
+        } catch (e) { state.samProxyBad = true; }
       }
+      // No usable proxy: can't read tetyys bytes cross-origin to stitch,
+      // so open the WAV (browser downloads/plays it).
+      window.open(samDirect(text.slice(0, 600), sam), '_blank', 'noopener');
+      status(text.length > 600 ? 'Opened WAV (first part; a proxy enables stitching)' : 'Opened WAV');
       return;
     }
     const s = await session(voiceFor(text));

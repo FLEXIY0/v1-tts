@@ -13,12 +13,16 @@ Demo: https://flexiy0.github.io/v1-tts/
 Open `index.html` in a browser (or the demo link). Two engines:
 
 - **Microsoft Sam — V1** (default): the authentic ULTRAKILL "V1" voice —
-  Microsoft Sam (SAPI4) at pitch 200 / speed 180, served by
-  [tetyys.com](https://www.tetyys.com/SAPI4/). Robotic but clearly
-  intelligible. Cyrillic is transliterated since Sam is an English formant
-  synth. By default it plays through a media element straight from tetyys
-  (no CORS needed), and `Download` opens the WAV in a new tab. For reliable
-  playback plus a real stitched download, run the optional proxy below.
+  Microsoft Sam (SAPI4), served by [tetyys.com](https://www.tetyys.com/SAPI4/).
+  Robotic but clearly intelligible. The community "V1" is pitch 200 / speed
+  180; the picker also offers aggressive (faster) and dark (lower) variants.
+  SAPI4's ranges are pitch 50–200 and speed 30–450, and values are clamped
+  to them. Cyrillic is transliterated since Sam is an English formant synth.
+  By default it plays through a media element straight from tetyys (no CORS
+  needed), and `Download` opens the WAV in a new tab. For reliable playback
+  plus a stitched download, run the optional proxy below — if a configured
+  proxy fails (e.g. tetyys blocks its datacenter IPs), the page falls back
+  to direct playback automatically.
 
 ### Optional: Microsoft Sam proxy
 
