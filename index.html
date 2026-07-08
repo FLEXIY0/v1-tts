@@ -157,28 +157,79 @@
 
   // Cyrillic is mapped straight to synthesizer phonemes instead of going
   // through the English text rules, which mispronounce transliterations.
-  var PH = {
-    'а':'AA','б':'B','в':'V','г':'G','д':'D','е':'EH','ё':'YOH','ж':'ZH',
-    'з':'Z','и':'IY','й':'Y','к':'K','л':'L','м':'M','н':'N','о':'OH',
-    'п':'P','р':'R','с':'S','т':'T','у':'UW','ф':'F','х':'/H','ц':'TS',
-    'ч':'CH','ш':'SH','щ':'SH','ъ':'','ы':'IH','ь':'','э':'EH','ю':'YUW','я':'YAA'
+  // A word-level pass approximates Russian phonology: stress placement,
+  // vowel reduction, /j/ glides, final devoicing and common orthographic
+  // exceptions — without it the output is flat and unintelligible.
+  var CONS = {
+    'б':'B','в':'V','г':'G','д':'D','ж':'ZH','з':'Z','й':'Y','к':'K',
+    'л':'L','м':'M','н':'N','п':'P','р':'R','с':'S','т':'T','ф':'F',
+    'х':'/H','ц':'TS','ч':'CH','ш':'SH','щ':'SH'
   };
+  var VOWELS = 'аеёиоуыэюя';
+  var FIX = { 'что':'што', 'чтобы':'штобы', 'сегодня':'севодня', 'конечно':'канешна' };
+
+  function ruWord(word) {
+    word = FIX[word] || word;
+    var genitive = /([ое])го$/.test(word);
+    word = word
+      .replace(/([ое])го$/, '$1во')   // -ого/-его endings sound as -ово/-ево
+      .replace(/ть?ся$/, 'ца')        // -тся/-ться reflexives sound as -ца
+      .replace(/б$/,'п').replace(/в$/,'ф').replace(/г$/,'к')  // final
+      .replace(/д$/,'т').replace(/ж$/,'ш').replace(/з$/,'с'); // devoicing
+
+    var ch = word.split('');
+    var vPos = [];
+    ch.forEach(function (c, i) { if (VOWELS.indexOf(c) >= 0) vPos.push(i); });
+
+    // Stress: 'ё' is always stressed; genitive endings stress the final
+    // vowel; otherwise fall back to the penultimate vowel, the single
+    // most common position. Wrong stress still beats no stress.
+    var stressAt = -1;
+    if (word.indexOf('ё') >= 0) stressAt = word.indexOf('ё');
+    else if (genitive && vPos.length) stressAt = vPos[vPos.length - 1];
+    else if (vPos.length === 1) stressAt = vPos[0];
+    else if (vPos.length > 1) stressAt = vPos[vPos.length - 2];
+
+    var out = '';
+    ch.forEach(function (c, i) {
+      var stressed = i === stressAt;
+      var ph = '';
+      switch (c) {
+        case 'а': ph = 'AA'; break;
+        case 'о': ph = stressed ? 'OH' : 'AH'; break;  // unstressed о → а
+        case 'е': ph = stressed ? 'YEH' : 'YIH'; break; // unstressed е → и
+        case 'ё': ph = 'YOH'; break;
+        case 'и': ph = 'IY'; break;
+        case 'ы': ph = 'IH'; break;
+        case 'у': ph = 'UW'; break;
+        case 'э': ph = 'EH'; break;
+        case 'ю': ph = 'YUW'; break;
+        case 'я': ph = stressed ? 'YAA' : 'YAH'; break;
+        case 'ь': ph = 'ао'.indexOf(ch[i + 1]) >= 0 ? 'Y' : ''; break;
+        case 'ъ': ph = ''; break;
+        default: ph = CONS[c] || '';
+      }
+      if (!ph) return;
+      if (VOWELS.indexOf(c) >= 0) ph += stressed ? '4' : '6';
+      out += ph;
+    });
+    return out;
+  }
 
   function toPhonemes(text) {
-    // Latin words go through the built-in reciter; everything else is
-    // mapped per character. Only " . ? , -" are valid phonetic punctuation.
+    // Latin words go through the built-in reciter; Cyrillic words through
+    // ruWord. Only " . ? , -" are valid phonetic punctuation.
     return text.split(/([A-Za-z']+)/).map(function (seg) {
       if (!seg) return '';
       if (/[A-Za-z]/.test(seg)) {
         var conv = SamJs.convert(seg);
         return typeof conv === 'string' ? conv : '';
       }
-      return seg.toLowerCase().replace(/[\s\S]/g, function (ch) {
-        if (PH[ch] !== undefined) return PH[ch];
-        if (ch === '.' || ch === '?' || ch === ',' || ch === '-') return ch;
-        if (ch === '!' || ch === ';' || ch === ':') return '.';
-        return ' ';
-      });
+      return seg.toLowerCase()
+        .replace(/[0-9]+/g, ' ')
+        .replace(/[а-яё]+/g, ruWord)
+        .replace(/[!;:]/g, '.')
+        .replace(/[^A-Z0-9 .,?\/-]/g, ' ');
     }).join(' ');
   }
 
