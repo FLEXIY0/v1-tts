@@ -1,370 +1,72 @@
-<!--
-#########################################################################################
-##  ██    ██  ██     ████████ ████████ ███████                                         ##
-##  ██    ██ ███        ██       ██    ██                                              ##
-##  ██    ██  ██  █████ ██       ██    ███████                                         ##
-##   ██  ██   ██        ██       ██         ██                                         ##
-##    ████    ██        ██       ██    ███████                                         ##
-##                                                                                     ##
-##  V1 SPEECH SYNTHESIS TERMINAL — an ULTRAKILL-flavoured OS/2 front-end for the       ##
-##  classic Software Automatic Mouth (SAM) synthesizer.                                ##
-##                                                                                     ##
-##  MANKIND IS DEAD. BLOOD IS FUEL. HELL IS FULL.                                      ##
-##                                                                                     ##
-##  **LEGAL DISCLAIMER: The original SAM code belongs to "Don't Ask Software           ##
-##  (SoftVoice inc.)" and contributors [Sebastian Macke, Vidar Hokstad, 8BitPimp,      ##
-##  discordier]. ULTRAKILL is a trademark of Arsi "Hakita" Patala / New Blood          ##
-##  Interactive. This is a non-commercial fan project.                                 ##
-#########################################################################################
--->
-<!DOCTYPE html>
-<html lang="ru">
+<!doctype html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>V1-TTS.EXE — SPEECH SYNTHESIS TERMINAL</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Ctext x='8' y='12' font-family='monospace' font-size='10' font-weight='bold' fill='%23c41111' text-anchor='middle'%3EV1%3C/text%3E%3C/svg%3E">
+<title>v1-tts</title>
+<link rel="icon" href="data:,">
 <style>
-  :root{
-    --desk:#008080;          /* классический бирюзовый рабочий стол OS/2 Warp */
-    --face:#c0c0c0;          /* серый пластик окна */
-    --hi:#ffffff;            /* светлая грань фаски */
-    --lo:#808080;            /* тёмная грань фаски */
-    --dk:#000000;
-    --blood:#8b0000;         /* ULTRAKILL: кровь — топливо */
-    --blood-hi:#c41111;
-    --gold:#ffcc00;          /* акцент в духе стиль-метра */
+  :root { color-scheme: light dark; }
+  body {
+    max-width: 60ch;
+    margin: 3rem auto;
+    padding: 0 1rem;
+    font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%}
-  body{
-    background:var(--desk);
-    /* фактура рабочего стола OS/2 — мелкая шахматка */
-    background-image:
-      linear-gradient(45deg, rgba(0,0,0,.06) 25%, transparent 25%, transparent 75%, rgba(0,0,0,.06) 75%),
-      linear-gradient(45deg, rgba(0,0,0,.06) 25%, transparent 25%, transparent 75%, rgba(0,0,0,.06) 75%);
-    background-size:4px 4px;
-    background-position:0 0,2px 2px;
-    font-family:"Tahoma","MS Sans Serif","Fixedsys",system-ui,sans-serif;
-    font-size:13px;
-    color:#000;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:24px 12px;
+  h1 { font-size: 1.2rem; }
+  p.desc { opacity: .7; }
+  label { display: block; margin-top: 1rem; }
+  input[type=text] {
+    width: 100%;
+    padding: .4rem;
+    font: inherit;
+    box-sizing: border-box;
   }
-
-  /* ---------- фаски OS/2 ---------- */
-  .raised{border:2px solid;border-color:var(--hi) var(--lo) var(--lo) var(--hi)}
-  .sunken{border:2px solid;border-color:var(--lo) var(--hi) var(--hi) var(--lo)}
-
-  .window{
-    width:100%;
-    max-width:560px;
-    background:var(--face);
-    border:1px solid var(--dk);
-    box-shadow:6px 6px 0 rgba(0,0,0,.45);
-    padding:2px;
-  }
-  .window-inner{border:2px solid;border-color:var(--hi) var(--lo) var(--lo) var(--hi)}
-
-  /* ---------- заголовок окна ---------- */
-  .titlebar{
-    display:flex;
-    align-items:stretch;
-    background:var(--blood);
-    background-image:linear-gradient(90deg,var(--blood),var(--blood-hi));
-    color:#fff;
-    height:26px;
-    user-select:none;
-  }
-  .titlebar .sysbtn{
-    width:26px;
-    display:flex;align-items:center;justify-content:center;
-    background:var(--face);
-    border:2px solid;border-color:var(--hi) var(--lo) var(--lo) var(--hi);
-    color:#000;font-weight:bold;font-size:11px;
-    flex:none;
-  }
-  .titlebar .title{
-    flex:1;
-    display:flex;align-items:center;justify-content:center;
-    font-weight:bold;letter-spacing:1px;
-    font-family:"Fixedsys","Courier New",monospace;
-    text-shadow:1px 1px 0 rgba(0,0,0,.6);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-    padding:0 6px;
-  }
-
-  /* ---------- строка меню: переключатель языка ---------- */
-  .menubar{
-    display:flex;align-items:center;gap:2px;
-    padding:3px 4px;
-    border-bottom:1px solid var(--lo);
-    box-shadow:0 1px 0 var(--hi);
-  }
-  .menubar .spacer{flex:1}
-  .langbtn{
-    font-family:inherit;font-size:12px;
-    background:var(--face);
-    border:2px solid;border-color:var(--hi) var(--lo) var(--lo) var(--hi);
-    padding:1px 10px;cursor:pointer;
-  }
-  .langbtn.active{
-    border-color:var(--lo) var(--hi) var(--hi) var(--lo);
-    background:#d7d7d7;
-    font-weight:bold;
-  }
-  .menubar .menu-title{padding:0 6px;color:#000}
-
-  .content{padding:12px 14px 10px}
-
-  /* ---------- шапка V1 ---------- */
-  .banner{
-    background:#000;
-    color:var(--blood-hi);
-    border:2px solid;border-color:var(--lo) var(--hi) var(--hi) var(--lo);
-    padding:10px 8px;
-    text-align:center;
-    font-family:"Fixedsys","Courier New",monospace;
-    margin-bottom:12px;
-    position:relative;
-    overflow:hidden;
-  }
-  .banner::after{ /* сканлайны ЭЛТ */
-    content:"";position:absolute;inset:0;pointer-events:none;
-    background:repeating-linear-gradient(0deg,transparent 0 2px,rgba(255,255,255,.05) 2px 3px);
-  }
-  .banner h1{
-    font-size:26px;letter-spacing:6px;color:#fff;
-    text-shadow:0 0 8px var(--blood-hi),2px 2px 0 var(--blood);
-  }
-  .banner .tagline{
-    margin-top:6px;font-size:11px;letter-spacing:2px;color:var(--blood-hi);
-    animation:blink 1.4s steps(1) infinite;
-  }
-  @keyframes blink{50%{opacity:.25}}
-
-  /* ---------- поля ---------- */
-  fieldset{
-    border:2px groove var(--hi);
-    padding:10px 10px 12px;
-    margin-bottom:12px;
-  }
-  legend{padding:0 6px;font-weight:bold}
-
-  .textinput{
-    width:100%;
-    font-family:"Fixedsys","Courier New",monospace;
-    font-size:14px;
-    padding:4px 6px;
-    background:#000;color:var(--gold);
-    border:2px solid;border-color:var(--lo) var(--hi) var(--hi) var(--lo);
-    outline:none;
-  }
-  .textinput::selection{background:var(--blood);color:#fff}
-  .hint{margin-top:6px;font-size:11px;color:#333}
-
-  .slider-row{
-    display:grid;
-    grid-template-columns:110px 1fr 40px;
-    align-items:center;
-    gap:8px;
-    margin-bottom:8px;
-  }
-  .slider-row:last-child{margin-bottom:0}
-  .slider-row label{font-weight:bold;white-space:nowrap}
-  .slider-row output{
-    text-align:right;
-    font-family:"Fixedsys","Courier New",monospace;
-    background:#000;color:var(--gold);
-    border:1px solid var(--lo);
-    padding:1px 3px;font-size:12px;
-  }
-  input[type=range]{
-    -webkit-appearance:none;appearance:none;
-    width:100%;height:20px;background:transparent;cursor:pointer;
-  }
-  input[type=range]::-webkit-slider-runnable-track{
-    height:8px;background:#a0a0a0;
-    border:2px solid;border-color:var(--lo) var(--hi) var(--hi) var(--lo);
-  }
-  input[type=range]::-webkit-slider-thumb{
-    -webkit-appearance:none;appearance:none;
-    width:12px;height:20px;margin-top:-8px;
-    background:var(--face);
-    border:2px solid;border-color:var(--hi) var(--lo) var(--lo) var(--hi);
-    box-shadow:inset 0 0 0 1px var(--blood);
-  }
-  input[type=range]::-moz-range-track{
-    height:8px;background:#a0a0a0;
-    border:2px solid;border-color:var(--lo) var(--hi) var(--hi) var(--lo);
-  }
-  input[type=range]::-moz-range-thumb{
-    width:8px;height:16px;border-radius:0;
-    background:var(--face);
-    border:2px solid;border-color:var(--hi) var(--lo) var(--lo) var(--hi);
-    box-shadow:inset 0 0 0 1px var(--blood);
-  }
-
-  /* ---------- кнопки ---------- */
-  .buttons{display:flex;gap:10px;margin-bottom:12px}
-  .btn{
-    flex:1;
-    font-family:inherit;font-size:13px;font-weight:bold;
-    padding:7px 4px;
-    background:var(--face);
-    border:2px solid;border-color:var(--hi) var(--lo) var(--lo) var(--hi);
-    box-shadow:1px 1px 0 var(--dk);
-    cursor:pointer;
-    letter-spacing:1px;
-  }
-  .btn:active{
-    border-color:var(--lo) var(--hi) var(--hi) var(--lo);
-    box-shadow:none;
-    transform:translate(1px,1px);
-  }
-  .btn-blood{background:var(--blood);color:#fff;text-shadow:1px 1px 0 #000}
-  .btn-blood:active{background:#6d0000}
-
-  /* ---------- статус-бар ---------- */
-  .statusbar{
-    display:flex;gap:4px;
-    padding:3px 4px 4px;
-    border-top:1px solid var(--hi);
-  }
-  .statusbar .cell{
-    border:2px solid;border-color:var(--lo) var(--hi) var(--hi) var(--lo);
-    padding:2px 8px;
-    font-size:11px;
-    font-family:"Fixedsys","Courier New",monospace;
-    white-space:nowrap;overflow:hidden;
-  }
-  .statusbar .cell.grow{flex:1}
-  .statusbar a{color:var(--blood);font-weight:bold;text-decoration:none}
-  .statusbar a:hover{text-decoration:underline}
+  .param { display: grid; grid-template-columns: 6ch 1fr 4ch; gap: .8rem; align-items: center; margin-top: .5rem; }
+  .param span:last-child { text-align: right; }
+  .actions { margin-top: 1.5rem; }
+  button { font: inherit; padding: .4rem 1rem; margin-right: .5rem; }
+  #status { margin-top: 1rem; min-height: 1.5em; opacity: .7; }
+  footer { margin-top: 3rem; font-size: .85em; opacity: .6; }
+  footer a { color: inherit; }
 </style>
 </head>
 <body>
 
-<div class="window">
-  <div class="window-inner">
+<h1>v1-tts</h1>
+<p class="desc">JavaScript port of SAM (Software Automatic Mouth), a speech
+synthesizer released for the Commodore 64 in 1982. Runs entirely in the
+browser. Cyrillic input is transliterated before synthesis.</p>
 
-    <div class="titlebar">
-      <div class="sysbtn">▬</div>
-      <div class="title">V1-TTS.EXE — SPEECH SYNTHESIS TERMINAL</div>
-      <div class="sysbtn">▼</div>
-      <div class="sysbtn">▲</div>
-    </div>
+<label for="text">Text</label>
+<input type="text" id="text" value="Hello, world." spellcheck="false" autocomplete="off">
 
-    <div class="menubar">
-      <span class="menu-title" data-i18n="menuLang">Язык:</span>
-      <button class="langbtn" id="lang-ru" type="button">RU</button>
-      <button class="langbtn" id="lang-en" type="button">EN</button>
-      <span class="spacer"></span>
-      <span class="menu-title" style="color:var(--blood);font-weight:bold">V1</span>
-    </div>
+<div class="param"><span>pitch</span>  <input type="range" id="pitch"  min="0" max="255" value="64">  <span id="pitch-v">64</span></div>
+<div class="param"><span>speed</span>  <input type="range" id="speed"  min="1" max="255" value="72">  <span id="speed-v">72</span></div>
+<div class="param"><span>mouth</span>  <input type="range" id="mouth"  min="0" max="255" value="128"> <span id="mouth-v">128</span></div>
+<div class="param"><span>throat</span> <input type="range" id="throat" min="0" max="255" value="128"> <span id="throat-v">128</span></div>
 
-    <div class="content">
-
-      <div class="banner">
-        <h1>V1</h1>
-        <div class="tagline" id="tagline">ЧЕЛОВЕЧЕСТВО МЕРТВО. КРОВЬ — ТОПЛИВО. АД ПЕРЕПОЛНЕН.</div>
-      </div>
-
-      <fieldset>
-        <legend data-i18n="inputLegend">ВВОД ТЕКСТА</legend>
-        <input class="textinput" size="60" id="speechinput" name="textfield"
-               value="Человечество мертво. Кровь это топливо. Ад переполнен.">
-        <div class="hint" id="hint">Кириллица транслитерируется автоматически — V1 говорит с акцентом.</div>
-      </fieldset>
-
-      <fieldset>
-        <legend data-i18n="voiceLegend">ПАРАМЕТРЫ ГОЛОСА</legend>
-        <div class="slider-row">
-          <label id="pitch-lbl" for="pitch">ВЫСОТА</label>
-          <input type="range" id="pitch" min="0" max="255" value="64">
-          <output id="pitch-out">64</output>
-        </div>
-        <div class="slider-row">
-          <label id="speed-lbl" for="speed">СКОРОСТЬ</label>
-          <input type="range" id="speed" min="1" max="255" value="72">
-          <output id="speed-out">72</output>
-        </div>
-        <div class="slider-row">
-          <label id="mouth-lbl" for="mouth">РОТ</label>
-          <input type="range" id="mouth" min="0" max="255" value="128">
-          <output id="mouth-out">128</output>
-        </div>
-        <div class="slider-row">
-          <label id="throat-lbl" for="throat">ГОРЛО</label>
-          <input type="range" id="throat" min="0" max="255" value="128">
-          <output id="throat-out">128</output>
-        </div>
-      </fieldset>
-
-      <div class="buttons">
-        <button class="btn btn-blood" id="fmm2" type="button">► ГОВОРИТЬ</button>
-        <button class="btn" id="fmm" type="button">▼ СКАЧАТЬ .WAV</button>
-      </div>
-
-    </div>
-
-    <div class="statusbar">
-      <div class="cell grow" id="status">ГОТОВ.</div>
-      <div class="cell"><a href="https://github.com/flexiy0/v1-tts" target="_blank" rel="noopener" id="srclink">ИСХОДНЫЙ КОД</a></div>
-      <div class="cell">OS/2 · SAM CORE</div>
-    </div>
-
-  </div>
+<div class="actions">
+  <button id="speak" type="button">Speak</button>
+  <button id="download" type="button">Download WAV</button>
 </div>
+
+<div id="status"></div>
+
+<footer>
+  <a href="https://github.com/flexiy0/v1-tts">source</a> ·
+  SAM core © Don't Ask Software (SoftVoice, Inc.), reverse-engineered; see README for license status.
+</footer>
 
 <script src="dist/samjs.js"></script>
 <script>
 (function () {
   'use strict';
 
-  /* ---------------- локализация ---------------- */
-  var I18N = {
-    ru: {
-      htmlLang: 'ru',
-      docTitle: 'V1-TTS.EXE — ТЕРМИНАЛ СИНТЕЗА РЕЧИ',
-      menuLang: 'Язык:',
-      tagline: 'ЧЕЛОВЕЧЕСТВО МЕРТВО. КРОВЬ — ТОПЛИВО. АД ПЕРЕПОЛНЕН.',
-      inputLegend: 'ВВОД ТЕКСТА',
-      voiceLegend: 'ПАРАМЕТРЫ ГОЛОСА',
-      hint: 'Кириллица транслитерируется автоматически — V1 говорит с акцентом.',
-      pitch: 'ВЫСОТА', speed: 'СКОРОСТЬ', mouth: 'РОТ', throat: 'ГОРЛО',
-      speak: '► ГОВОРИТЬ',
-      download: '▼ СКАЧАТЬ .WAV',
-      srclink: 'ИСХОДНЫЙ КОД',
-      statusReady: 'ГОТОВ.',
-      statusSpeaking: 'ГОВОРЮ...',
-      statusRendering: 'РЕНДЕР .WAV...',
-      statusError: 'ОШИБКА СИНТЕЗА.',
-      defaultText: 'Человечество мертво. Кровь это топливо. Ад переполнен.'
-    },
-    en: {
-      htmlLang: 'en',
-      docTitle: 'V1-TTS.EXE — SPEECH SYNTHESIS TERMINAL',
-      menuLang: 'Language:',
-      tagline: 'MANKIND IS DEAD. BLOOD IS FUEL. HELL IS FULL.',
-      inputLegend: 'TEXT INPUT',
-      voiceLegend: 'VOICE PARAMETERS',
-      hint: 'Cyrillic input is transliterated automatically — V1 speaks with an accent.',
-      pitch: 'PITCH', speed: 'SPEED', mouth: 'MOUTH', throat: 'THROAT',
-      speak: '► SPEAK',
-      download: '▼ DOWNLOAD .WAV',
-      srclink: 'SOURCE CODE',
-      statusReady: 'READY.',
-      statusSpeaking: 'SPEAKING...',
-      statusRendering: 'RENDERING .WAV...',
-      statusError: 'SYNTHESIS ERROR.',
-      defaultText: 'Mankind is dead. Blood is fuel. Hell is full.'
-    }
-  };
+  var opts = { pitch: 64, speed: 72, mouth: 128, throat: 128 };
+  var $ = function (id) { return document.getElementById(id); };
 
-  /* ------- транслитерация: SAM понимает только английскую фонетику ------- */
+  // SAM's reciter only handles Latin text; map Cyrillic to a phonetic approximation.
   var CYR = {
     'а':'a','б':'b','в':'v','г':'g','д':'d','е':'ye','ё':'yo','ж':'zh',
     'з':'z','и':'ee','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o',
@@ -373,86 +75,36 @@
   };
   function transliterate(text) {
     return text.replace(/[а-яёА-ЯЁ]/g, function (ch) {
-      var lower = ch.toLowerCase();
-      var lat = CYR[lower];
-      if (lat === undefined) return ch;
-      return (ch === lower) ? lat : lat.toUpperCase();
+      var lat = CYR[ch.toLowerCase()];
+      return lat === undefined ? ch : lat;
     });
   }
 
-  /* ---------------- состояние ---------------- */
-  var opts = { debug: 0, pitch: 64, speed: 72, mouth: 128, throat: 128 };
-  var lang = localStorage.getItem('v1tts-lang') || 'ru';
-  var $ = function (id) { return document.getElementById(id); };
+  function status(msg) { $('status').textContent = msg; }
+  function input() { return transliterate($('text').value); }
 
-  function setStatus(key) { $('status').innerText = I18N[lang][key]; }
-
-  function applyLang(next) {
-    lang = next;
-    localStorage.setItem('v1tts-lang', lang);
-    var t = I18N[lang];
-
-    document.documentElement.lang = t.htmlLang;
-    document.title = t.docTitle;
-    $('tagline').innerText = t.tagline;
-    $('hint').innerText = t.hint;
-    $('fmm2').innerText = t.speak;
-    $('fmm').innerText = t.download;
-    $('srclink').innerText = t.srclink;
-    document.querySelectorAll('[data-i18n]').forEach(function (el) {
-      el.innerText = t[el.getAttribute('data-i18n')];
+  Object.keys(opts).forEach(function (p) {
+    $(p).addEventListener('input', function (e) {
+      opts[p] = +e.target.value;
+      $(p + '-v').textContent = e.target.value;
     });
-    ['pitch', 'speed', 'mouth', 'throat'].forEach(function (p) {
-      $(p + '-lbl').innerText = t[p];
-    });
-    $('lang-ru').classList.toggle('active', lang === 'ru');
-    $('lang-en').classList.toggle('active', lang === 'en');
-    setStatus('statusReady');
+  });
 
-    // текст меняем только если пользователь его не редактировал
-    var input = $('speechinput');
-    var isDefault = Object.keys(I18N).some(function (k) {
-      return input.value === I18N[k].defaultText;
-    });
-    if (isDefault) input.value = t.defaultText;
-  }
+  $('speak').addEventListener('click', function () {
+    status('playing');
+    var done = function () { status(''); };
+    var fail = function () { status('synthesis failed'); };
+    try {
+      var p = new SamJs(opts).speak(input());
+      if (p && typeof p.then === 'function') p.then(done, fail); else done();
+    } catch (e) { fail(); }
+  });
 
-  document.addEventListener('DOMContentLoaded', function () {
-    ['speed', 'pitch', 'mouth', 'throat'].forEach(function (p) {
-      var el = $(p);
-      el.value = opts[p];
-      $(p + '-out').innerText = opts[p];
-      el.addEventListener('input', function (e) {
-        opts[p] = +e.target.value;
-        $(p + '-out').innerText = e.target.value;
-      });
-    });
-
-    $('lang-ru').addEventListener('click', function () { applyLang('ru'); });
-    $('lang-en').addEventListener('click', function () { applyLang('en'); });
-
-    $('fmm2').addEventListener('click', function (e) {
-      e.preventDefault();
-      var text = transliterate($('speechinput').value);
-      setStatus('statusSpeaking');
-      var done = function () { setStatus('statusReady'); };
-      try {
-        var p = new SamJs(opts).speak(text);
-        if (p && typeof p.then === 'function') { p.then(done, function () { setStatus('statusError'); }); }
-        else { done(); }
-      } catch (err) { setStatus('statusError'); }
-    });
-
-    $('fmm').addEventListener('click', function (e) {
-      e.preventDefault();
-      setStatus('statusRendering');
-      try {
-        new SamJs(opts).download(transliterate($('speechinput').value));
-        setStatus('statusReady');
-      } catch (err) { setStatus('statusError'); }
-    });
-
-    applyLang(lang);
+  $('download').addEventListener('click', function () {
+    try {
+      new SamJs(opts).download(input());
+      status('');
+    } catch (e) { status('synthesis failed'); }
   });
 })();
 </script>

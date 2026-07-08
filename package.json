@@ -1,7 +1,7 @@
 {
   "name": "v1-tts",
   "version": "0.1.2",
-  "description": "V1-TTS - ULTRAKILL-flavoured OS/2 speech synthesis terminal (SAM core)",
+  "description": "Text-to-speech in the browser, based on SAM (Software Automatic Mouth)",
   "author": "Christian Schiffler <c.schiffler@cyberspectrum.de>",
   "private": false,
   "main": "dist/samjs.js",
@@ -73,11 +73,9 @@
   "keywords": [
     "speech",
     "synthesis",
+    "tts",
     "retro",
-    "c64",
-    "ultrakill",
-    "v1",
-    "os2"
+    "c64"
   ],
   "license": "SEE LICENSE IN README.md",
   "bugs": {
