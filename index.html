@@ -167,25 +167,44 @@
   };
   var VOWELS = 'аеёиоуыэюя';
   var FIX = { 'что':'што', 'чтобы':'штобы', 'сегодня':'севодня', 'конечно':'канешна' };
+  // Function words carry no stress of their own.
+  var CLITICS = ' в во на под подо за из изо у о об обо от ото с со к ко по до при без безо не ни же ли бы б и а но да или уж ведь вот ';
+  // 1-based stressed-vowel index for frequent words the penultimate-vowel
+  // heuristic gets wrong.
+  var STRESS = {
+    'время':1,'времени':1,'человек':3,'человека':3,'человечество':3,
+    'система':2,'системы':2,'системе':2,'классический':2,'игнорировать':3,
+    'компьютер':2,'программа':2,'программы':2,'интернет':3,'язык':2,
+    'языка':2,'хорошо':3,'очень':1,'быстро':1,'тогда':2,'когда':2,
+    'всегда':2,'никогда':3,'иногда':3,'потом':2,'почему':3,'потому':3,
+    'сейчас':2,'теперь':2,'вообще':3,'например':3,'работа':2,'работает':2,
+    'говорит':3,'говорить':3,'большой':2,'маленький':1,'новый':1,
+    'первый':1,'последний':2,'машина':2,'музыка':1,'свобода':2
+  };
 
   function ruWord(word) {
+    var clitic = CLITICS.indexOf(' ' + word + ' ') >= 0;
+    var dictStress = STRESS[word];
     word = FIX[word] || word;
     var genitive = /([ое])го$/.test(word);
     word = word
       .replace(/([ое])го$/, '$1во')   // -ого/-его endings sound as -ово/-ево
       .replace(/ть?ся$/, 'ца')        // -тся/-ться reflexives sound as -ца
       .replace(/б$/,'п').replace(/в$/,'ф').replace(/г$/,'к')  // final
-      .replace(/д$/,'т').replace(/ж$/,'ш').replace(/з$/,'с'); // devoicing
+      .replace(/д$/,'т').replace(/ж$/,'ш').replace(/з$/,'с') // devoicing
+      .replace(/([бвгджзклмнпрстфхцчшщ])\1/g, '$1'); // double consonants
 
     var ch = word.split('');
     var vPos = [];
     ch.forEach(function (c, i) { if (VOWELS.indexOf(c) >= 0) vPos.push(i); });
 
-    // Stress: 'ё' is always stressed; genitive endings stress the final
-    // vowel; otherwise fall back to the penultimate vowel, the single
-    // most common position. Wrong stress still beats no stress.
+    // Stress: dictionary first; 'ё' is always stressed; genitive endings
+    // stress the final vowel; clitics take none; otherwise fall back to
+    // the penultimate vowel, the single most common position.
     var stressAt = -1;
-    if (word.indexOf('ё') >= 0) stressAt = word.indexOf('ё');
+    if (dictStress && vPos.length >= dictStress) stressAt = vPos[dictStress - 1];
+    else if (word.indexOf('ё') >= 0) stressAt = word.indexOf('ё');
+    else if (clitic) stressAt = -1;
     else if (genitive && vPos.length) stressAt = vPos[vPos.length - 1];
     else if (vPos.length === 1) stressAt = vPos[0];
     else if (vPos.length > 1) stressAt = vPos[vPos.length - 2];
@@ -193,24 +212,25 @@
     var out = '';
     ch.forEach(function (c, i) {
       var stressed = i === stressAt;
+      var hard = 'жшц'.indexOf(ch[i - 1]) >= 0; // же→жэ, жи→жы etc.
       var ph = '';
       switch (c) {
         case 'а': ph = 'AA'; break;
         case 'о': ph = stressed ? 'OH' : 'AH'; break;  // unstressed о → а
-        case 'е': ph = stressed ? 'YEH' : 'YIH'; break; // unstressed е → и
-        case 'ё': ph = 'YOH'; break;
-        case 'и': ph = 'IY'; break;
+        case 'е': ph = (stressed ? 'EH' : 'IH'); if (!hard) ph = 'Y' + ph; break;
+        case 'ё': ph = hard ? 'OH' : 'YOH'; break;
+        case 'и': ph = hard ? 'IH' : 'IY'; break;
         case 'ы': ph = 'IH'; break;
         case 'у': ph = 'UW'; break;
         case 'э': ph = 'EH'; break;
-        case 'ю': ph = 'YUW'; break;
-        case 'я': ph = stressed ? 'YAA' : 'YAH'; break;
+        case 'ю': ph = hard ? 'UW' : 'YUW'; break;
+        case 'я': ph = (stressed ? 'AA' : 'AH'); if (!hard) ph = 'Y' + ph; break;
         case 'ь': ph = 'ао'.indexOf(ch[i + 1]) >= 0 ? 'Y' : ''; break;
         case 'ъ': ph = ''; break;
         default: ph = CONS[c] || '';
       }
       if (!ph) return;
-      if (VOWELS.indexOf(c) >= 0) ph += stressed ? '4' : '6';
+      if (VOWELS.indexOf(c) >= 0) ph += stressed ? '3' : '6';
       out += ph;
     });
     return out;
@@ -229,8 +249,19 @@
         .replace(/[0-9]+/g, ' ')
         .replace(/[а-яё]+/g, ruWord)
         .replace(/[!;:]/g, '.')
-        .replace(/[^A-Z0-9 .,?\/-]/g, ' ');
+        .replace(/[^A-Z0-9 .,?\/-]/g, ' ')
+        .replace(/ +/g, '-'); // short pause between words: keeps them apart
     }).join(' ');
+  }
+
+  // Phonetic (Russian) chunks are rendered slower than the slider value:
+  // an unfamiliar accent needs more time per phoneme to stay intelligible.
+  function samFor(req) {
+    if (!req.phonetic) return new SamJs(opts);
+    var slowed = {};
+    Object.keys(opts).forEach(function (k) { slowed[k] = opts[k]; });
+    slowed.speed = Math.min(255, Math.round(opts.speed * 1.4));
+    return new SamJs(slowed);
   }
 
   function prepare(text) {
@@ -262,10 +293,9 @@
   var GAP = Math.round(RATE * 0.28); // inter-phrase silence, samples
 
   function renderChunks(chunks) {
-    var sam = new SamJs(opts);
     return chunks.map(function (c) {
       var req = prepare(c);
-      var b = sam.buf8(req.text, req.phonetic);
+      var b = samFor(req).buf8(req.text, req.phonetic);
       if (!(b instanceof Uint8Array)) throw new Error('synthesis failed');
       return b;
     });
@@ -308,7 +338,6 @@
     var token = ++playToken;
     var chunks = splitText($('text').value);
     if (!chunks.length) { status('Ready'); return; }
-    var sam = new SamJs(opts);
     var i = 0;
     (function next() {
       if (token !== playToken) return;
@@ -316,7 +345,7 @@
       status(chunks.length > 1 ? 'Playing ' + (i + 1) + '/' + chunks.length : 'Playing');
       var req = prepare(chunks[i++]);
       var p;
-      try { p = sam.speak(req.text, req.phonetic); } catch (e) { status('Synthesis failed'); return; }
+      try { p = samFor(req).speak(req.text, req.phonetic); } catch (e) { status('Synthesis failed'); return; }
       if (p && typeof p.then === 'function') {
         p.then(function () { setTimeout(next, 280); }, function () { status('Synthesis failed'); });
       } else {
