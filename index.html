@@ -6,57 +6,146 @@
 <title>v1-tts</title>
 <link rel="icon" href="data:,">
 <style>
-  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
   body {
-    max-width: 60ch;
-    margin: 3rem auto;
-    padding: 0 1rem;
-    font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #008080;
+    font: 11px Tahoma, "MS Sans Serif", sans-serif;
+    padding: 16px;
   }
-  h1 { font-size: 1.2rem; }
-  p.desc { opacity: .7; }
-  label { display: block; margin-top: 1rem; }
+  .window {
+    width: 100%;
+    max-width: 420px;
+    background: #c0c0c0;
+    border: 1px solid #000;
+    box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #808080, 2px 2px 0 rgba(0,0,0,.3);
+    padding: 2px;
+  }
+  .titlebar {
+    background: linear-gradient(90deg, #000080, #1084d0);
+    color: #fff;
+    font-weight: bold;
+    padding: 3px 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+  }
+  .titlebar .x {
+    width: 16px; height: 14px;
+    background: #c0c0c0;
+    border: 1px solid;
+    border-color: #fff #404040 #404040 #fff;
+    color: #000;
+    font: bold 9px Tahoma, sans-serif;
+    text-align: center;
+    line-height: 12px;
+  }
+  .body { padding: 10px; }
+  label { display: block; margin-bottom: 3px; }
   input[type=text] {
     width: 100%;
-    padding: .4rem;
+    padding: 3px 4px;
     font: inherit;
-    box-sizing: border-box;
+    background: #fff;
+    border: 2px solid;
+    border-color: #808080 #fff #fff #808080;
+    outline: none;
   }
-  .param { display: grid; grid-template-columns: 6ch 1fr 4ch; gap: .8rem; align-items: center; margin-top: .5rem; }
+  .param {
+    display: grid;
+    grid-template-columns: 42px 1fr 28px;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+  }
   .param span:last-child { text-align: right; }
-  .actions { margin-top: 1.5rem; }
-  button { font: inherit; padding: .4rem 1rem; margin-right: .5rem; }
-  #status { margin-top: 1rem; min-height: 1.5em; opacity: .7; }
-  footer { margin-top: 3rem; font-size: .85em; opacity: .6; }
-  footer a { color: inherit; }
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%; height: 18px;
+    background: transparent;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 4px;
+    background: #808080;
+    box-shadow: 0 1px 0 #fff;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 11px; height: 18px;
+    margin-top: -7px;
+    background: #c0c0c0;
+    border: 1px solid;
+    border-color: #fff #404040 #404040 #fff;
+  }
+  input[type=range]::-moz-range-track {
+    height: 4px;
+    background: #808080;
+    box-shadow: 0 1px 0 #fff;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 9px; height: 16px;
+    border-radius: 0;
+    background: #c0c0c0;
+    border: 1px solid;
+    border-color: #fff #404040 #404040 #fff;
+  }
+  .actions { margin-top: 12px; display: flex; gap: 6px; }
+  button {
+    font: inherit;
+    padding: 4px 12px;
+    background: #c0c0c0;
+    border: 2px solid;
+    border-color: #fff #404040 #404040 #fff;
+    box-shadow: 1px 1px 0 #000;
+  }
+  button:active {
+    border-color: #404040 #fff #fff #404040;
+    box-shadow: none;
+  }
+  .statusbar {
+    margin-top: 12px;
+    display: flex;
+    justify-content: space-between;
+    border: 1px solid;
+    border-color: #808080 #fff #fff #808080;
+    padding: 2px 6px;
+  }
+  .statusbar a { color: #000080; }
 </style>
 </head>
 <body>
 
-<h1>v1-tts</h1>
-<p class="desc">JavaScript port of SAM (Software Automatic Mouth), a speech
-synthesizer released for the Commodore 64 in 1982. Runs entirely in the
-browser. Cyrillic input is transliterated before synthesis.</p>
+<div class="window">
+  <div class="titlebar"><span>v1-tts</span><span class="x">×</span></div>
+  <div class="body">
 
-<label for="text">Text</label>
-<input type="text" id="text" value="Hello, world." spellcheck="false" autocomplete="off">
+    <label for="text">Text</label>
+    <input type="text" id="text" value="Hello, world." spellcheck="false" autocomplete="off">
 
-<div class="param"><span>pitch</span>  <input type="range" id="pitch"  min="0" max="255" value="64">  <span id="pitch-v">64</span></div>
-<div class="param"><span>speed</span>  <input type="range" id="speed"  min="1" max="255" value="72">  <span id="speed-v">72</span></div>
-<div class="param"><span>mouth</span>  <input type="range" id="mouth"  min="0" max="255" value="128"> <span id="mouth-v">128</span></div>
-<div class="param"><span>throat</span> <input type="range" id="throat" min="0" max="255" value="128"> <span id="throat-v">128</span></div>
+    <div class="param"><span>pitch</span>  <input type="range" id="pitch"  min="0" max="255" value="64">  <span id="pitch-v">64</span></div>
+    <div class="param"><span>speed</span>  <input type="range" id="speed"  min="1" max="255" value="72">  <span id="speed-v">72</span></div>
+    <div class="param"><span>mouth</span>  <input type="range" id="mouth"  min="0" max="255" value="128"> <span id="mouth-v">128</span></div>
+    <div class="param"><span>throat</span> <input type="range" id="throat" min="0" max="255" value="128"> <span id="throat-v">128</span></div>
 
-<div class="actions">
-  <button id="speak" type="button">Speak</button>
-  <button id="download" type="button">Download WAV</button>
+    <div class="actions">
+      <button id="speak" type="button">Speak</button>
+      <button id="download" type="button">Download WAV</button>
+    </div>
+
+    <div class="statusbar">
+      <span id="status">Ready</span>
+      <a href="https://github.com/flexiy0/v1-tts">source</a>
+    </div>
+
+  </div>
 </div>
-
-<div id="status"></div>
-
-<footer>
-  <a href="https://github.com/flexiy0/v1-tts">source</a> ·
-  SAM core © Don't Ask Software (SoftVoice, Inc.), reverse-engineered; see README for license status.
-</footer>
 
 <script src="dist/samjs.js"></script>
 <script>
@@ -66,22 +155,39 @@ browser. Cyrillic input is transliterated before synthesis.</p>
   var opts = { pitch: 64, speed: 72, mouth: 128, throat: 128 };
   var $ = function (id) { return document.getElementById(id); };
 
-  // SAM's reciter only handles Latin text; map Cyrillic to a phonetic approximation.
-  var CYR = {
-    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'ye','ё':'yo','ж':'zh',
-    'з':'z','и':'ee','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o',
-    'п':'p','р':'r','с':'s','т':'t','у':'oo','ф':'f','х':'h','ц':'ts',
-    'ч':'ch','ш':'sh','щ':'sh','ъ':'','ы':'i','ь':'','э':'e','ю':'yu','я':'ya'
+  // Cyrillic is mapped straight to synthesizer phonemes instead of going
+  // through the English text rules, which mispronounce transliterations.
+  var PH = {
+    'а':'AA','б':'B','в':'V','г':'G','д':'D','е':'EH','ё':'YOH','ж':'ZH',
+    'з':'Z','и':'IY','й':'Y','к':'K','л':'L','м':'M','н':'N','о':'OH',
+    'п':'P','р':'R','с':'S','т':'T','у':'UW','ф':'F','х':'/H','ц':'TS',
+    'ч':'CH','ш':'SH','щ':'SH','ъ':'','ы':'IH','ь':'','э':'EH','ю':'YUW','я':'YAA'
   };
-  function transliterate(text) {
-    return text.replace(/[а-яёА-ЯЁ]/g, function (ch) {
-      var lat = CYR[ch.toLowerCase()];
-      return lat === undefined ? ch : lat;
-    });
+
+  function toPhonemes(text) {
+    // Latin words go through the built-in reciter; everything else is
+    // mapped per character. Only " . ? , -" are valid phonetic punctuation.
+    return text.split(/([A-Za-z']+)/).map(function (seg) {
+      if (!seg) return '';
+      if (/[A-Za-z]/.test(seg)) {
+        var conv = SamJs.convert(seg);
+        return typeof conv === 'string' ? conv : '';
+      }
+      return seg.toLowerCase().replace(/[\s\S]/g, function (ch) {
+        if (PH[ch] !== undefined) return PH[ch];
+        if (ch === '.' || ch === '?' || ch === ',' || ch === '-') return ch;
+        if (ch === '!' || ch === ';' || ch === ':') return '.';
+        return ' ';
+      });
+    }).join(' ');
+  }
+
+  function prepare(text) {
+    if (/[а-яёА-ЯЁ]/.test(text)) return { text: toPhonemes(text), phonetic: true };
+    return { text: text, phonetic: false };
   }
 
   function status(msg) { $('status').textContent = msg; }
-  function input() { return transliterate($('text').value); }
 
   Object.keys(opts).forEach(function (p) {
     $(p).addEventListener('input', function (e) {
@@ -91,20 +197,22 @@ browser. Cyrillic input is transliterated before synthesis.</p>
   });
 
   $('speak').addEventListener('click', function () {
-    status('playing');
-    var done = function () { status(''); };
-    var fail = function () { status('synthesis failed'); };
+    var req = prepare($('text').value);
+    status('Playing');
+    var done = function () { status('Ready'); };
+    var fail = function () { status('Synthesis failed'); };
     try {
-      var p = new SamJs(opts).speak(input());
+      var p = new SamJs(opts).speak(req.text, req.phonetic);
       if (p && typeof p.then === 'function') p.then(done, fail); else done();
     } catch (e) { fail(); }
   });
 
   $('download').addEventListener('click', function () {
+    var req = prepare($('text').value);
     try {
-      new SamJs(opts).download(input());
-      status('');
-    } catch (e) { status('synthesis failed'); }
+      new SamJs(opts).download(req.text, req.phonetic);
+      status('Ready');
+    } catch (e) { status('Synthesis failed'); }
   });
 })();
 </script>
