@@ -10,7 +10,15 @@ Demo: https://flexiy0.github.io/v1-tts/
 
 ## Usage
 
-Open `index.html` in a browser (or the demo link). Two engines:
+Open `index.html` in a browser (or the demo link). Three engines:
+
+- **eSpeak — V1** (default): a local robotic formant voice —
+  [espeak-ng](https://github.com/espeak-ng/espeak-ng) compiled to
+  WebAssembly (`dist/espeak/`, ~18 MB, language data embedded). Runs fully
+  in the browser with no server and no network, and speaks **Russian and
+  English natively** (no transliteration). Same "computer voice" family as
+  Microsoft Sam, clearly intelligible; the `preset`/`robot` effect layers a
+  machine character on top. The engine loads on first use and is cached.
 
 - **Microsoft Sam — V1** (default): the authentic ULTRAKILL "V1" voice —
   Microsoft Sam (SAPI4), served by [tetyys.com](https://www.tetyys.com/SAPI4/).

@@ -138,11 +138,14 @@
   <div class="body">
 
     <label for="text">Text</label>
-    <textarea id="text" spellcheck="false">Привет. Это нейросетевой синтез речи прямо в браузере.</textarea>
+    <textarea id="text" spellcheck="false">Mankind is dead. Blood is fuel. Hell is full.</textarea>
 
     <div class="row">
       <span>voice</span>
       <select id="voice">
+        <option value="espeak-v1">eSpeak — V1 (local, RU+EN)</option>
+        <option value="espeak-en">eSpeak — English (local)</option>
+        <option value="espeak-ru">eSpeak — Russian (local)</option>
         <option value="sam-v1">Microsoft Sam — V1 (200/180)</option>
         <option value="sam-v1-aggressive">Microsoft Sam — V1 aggressive (200/250)</option>
         <option value="sam-v1-dark">Microsoft Sam — V1 dark (90/130)</option>
@@ -173,8 +176,8 @@
 
     <div class="row">
       <span>robot</span>
-      <input type="range" id="robot" min="0" max="100" step="5" value="100">
-      <span id="robot-v">100%</span>
+      <input type="range" id="robot" min="0" max="100" step="5" value="30">
+      <span id="robot-v">30%</span>
     </div>
 
     <div class="actions">
@@ -195,7 +198,30 @@
 import * as tts from './dist/piper.js';
 
 const $ = id => document.getElementById(id);
-const state = { token: 0, audio: null, rate: 1, robot: 1, preset: null, session: null, voiceId: null, samProxyBad: false };
+const state = { token: 0, audio: null, rate: 1, robot: 0.3, preset: null, session: null, voiceId: null, samProxyBad: false };
+
+// Local engine: espeak-ng compiled to WASM (~18 MB, data embedded). A robotic
+// formant synthesizer in the same family as Microsoft Sam — intelligible,
+// native Russian and English, no server, no network. Loaded on first use.
+const ESPEAK = {
+  'espeak-v1': { lang: 'auto', pitch: 35, speed: 155 },
+  'espeak-en': { lang: 'en-us', pitch: 40, speed: 160 },
+  'espeak-ru': { lang: 'ru', pitch: 40, speed: 160 }
+};
+let espeakMod = null;
+async function espeakWav(text, voice) {
+  if (!espeakMod) {
+    status('Loading voice engine');
+    espeakMod = (await import('./dist/espeak/espeak-ng.js')).default;
+  }
+  const c = ESPEAK[voice];
+  const lang = c.lang === 'auto' ? (/[а-яё]/i.test(text) ? 'ru' : 'en-us') : c.lang;
+  const m = await espeakMod({
+    arguments: ['-w', 'o.wav', '-v', lang, '-p', String(c.pitch), '-s', String(c.speed), text],
+    print() {}, printErr() {}
+  });
+  return new Blob([m.FS.readFile('o.wav')], { type: 'audio/wav' });
+}
 
 // First use of a voice downloads its model (~60 MB) from HuggingFace;
 // piper-tts-web caches it in OPFS, so subsequent runs are local.
@@ -467,8 +493,21 @@ $('speak').addEventListener('click', async () => {
   const text = $('text').value.trim();
   if (!text) return;
   const chunks = splitText(text, 300);
-  const sam = SAM[$('voice').value];
+  const voice = $('voice').value;
+  const sam = SAM[voice];
   try {
+    if (ESPEAK[voice]) {
+      // Local engine: synth to a blob, apply the effect, play.
+      for (let i = 0; i < chunks.length; i++) {
+        const blob = await robotize(await espeakWav(chunks[i], voice), state.robot);
+        if (token !== state.token) return;
+        status(chunks.length > 1 ? `Playing ${i + 1}/${chunks.length}` : 'Playing');
+        await play(blob);
+        if (token !== state.token) return;
+      }
+      status('Ready');
+      return;
+    }
     if (sam) {
       for (let i = 0; i < chunks.length; i++) {
         status(chunks.length > 1 ? `Playing ${i + 1}/${chunks.length}` : 'Playing');
@@ -514,8 +553,23 @@ $('download').addEventListener('click', async () => {
   const text = $('text').value.trim();
   if (!text) return;
   const chunks = splitText(text, 300);
-  const sam = SAM[$('voice').value];
+  const voice = $('voice').value;
+  const sam = SAM[voice];
   try {
+    if (ESPEAK[voice]) {
+      const blobs = [];
+      for (let i = 0; i < chunks.length; i++) {
+        status(chunks.length > 1 ? `Synthesizing ${i + 1}/${chunks.length}` : 'Synthesizing');
+        blobs.push(await robotize(await espeakWav(chunks[i], voice), state.robot));
+        if (token !== state.token) return;
+      }
+      const url = URL.createObjectURL(await stitch(blobs));
+      const a = document.createElement('a');
+      a.href = url; a.download = 'v1-tts.wav'; a.click();
+      URL.revokeObjectURL(url);
+      status('Ready');
+      return;
+    }
     if (sam) {
       if (useProxy()) {
         try {
