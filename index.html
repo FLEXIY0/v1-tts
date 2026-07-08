@@ -143,20 +143,36 @@
     <div class="row">
       <span>voice</span>
       <select id="voice">
-        <option value="espeak-v1">eSpeak — V1 (local, RU+EN)</option>
-        <option value="espeak-en">eSpeak — English (local)</option>
-        <option value="espeak-ru">eSpeak — Russian (local)</option>
-        <option value="sam-c64">C64 SAM — classic (local, 8-bit)</option>
-        <option value="sam-v1">Microsoft Sam — V1 (200/180)</option>
-        <option value="sam-v1-aggressive">Microsoft Sam — V1 aggressive (200/250)</option>
-        <option value="sam-v1-dark">Microsoft Sam — V1 dark (90/130)</option>
-        <option value="sam-plain">Microsoft Sam — plain (100/150)</option>
-        <option value="auto">Piper — auto (by language)</option>
-        <option value="ru_RU-irina-medium">Piper — Irina (Russian)</option>
-        <option value="ru_RU-ruslan-medium">Piper — Ruslan (Russian)</option>
-        <option value="ru_RU-denis-medium">Piper — Denis (Russian)</option>
-        <option value="en_US-hfc_female-medium">Piper — HFC Female (English)</option>
-        <option value="en_US-lessac-medium">Piper — Lessac (English)</option>
+        <optgroup label="eSpeak (local, RU+EN)">
+          <option value="espeak-v1">eSpeak — V1</option>
+          <option value="espeak-robosoft">eSpeak — RoboSoft</option>
+          <option value="espeak-whisper">eSpeak — Whisper</option>
+          <option value="espeak-croak">eSpeak — Croak</option>
+          <option value="espeak-en">eSpeak — English</option>
+          <option value="espeak-ru">eSpeak — Russian</option>
+        </optgroup>
+        <optgroup label="C64 SAM (local, 8-bit)">
+          <option value="sam-c64">C64 SAM — classic</option>
+          <option value="sam-elf">C64 SAM — Elf</option>
+          <option value="sam-robot">C64 SAM — Little Robot</option>
+          <option value="sam-stuffy">C64 SAM — Stuffy Guy</option>
+          <option value="sam-oldlady">C64 SAM — Little Old Lady</option>
+          <option value="sam-alien">C64 SAM — Extra-Terrestrial</option>
+        </optgroup>
+        <optgroup label="Microsoft Sam (tetyys)">
+          <option value="sam-v1">Microsoft Sam — V1 (200/180)</option>
+          <option value="sam-v1-aggressive">Microsoft Sam — V1 aggressive (200/250)</option>
+          <option value="sam-v1-dark">Microsoft Sam — V1 dark (90/130)</option>
+          <option value="sam-plain">Microsoft Sam — plain (100/150)</option>
+        </optgroup>
+        <optgroup label="Piper (neural, local)">
+          <option value="auto">Piper — auto (by language)</option>
+          <option value="ru_RU-irina-medium">Piper — Irina (Russian)</option>
+          <option value="ru_RU-ruslan-medium">Piper — Ruslan (Russian)</option>
+          <option value="ru_RU-denis-medium">Piper — Denis (Russian)</option>
+          <option value="en_US-hfc_female-medium">Piper — HFC Female (English)</option>
+          <option value="en_US-lessac-medium">Piper — Lessac (English)</option>
+        </optgroup>
       </select>
     </div>
 
@@ -206,10 +222,15 @@ const state = { token: 0, audio: null, rate: 1, robot: 0.65, preset: null, sessi
 // Local engine: espeak-ng compiled to WASM (~18 MB, data embedded). A robotic
 // formant synthesizer in the same family as Microsoft Sam — intelligible,
 // native Russian and English, no server, no network. Loaded on first use.
+// `variant` selects an espeak voice colour (robosoft, whisper, croak, …),
+// appended as lang+variant. All verified to work locally in RU and EN.
 const ESPEAK = {
-  'espeak-v1': { lang: 'auto', pitch: 35, speed: 155 },
-  'espeak-en': { lang: 'en-us', pitch: 40, speed: 160 },
-  'espeak-ru': { lang: 'ru', pitch: 40, speed: 160 }
+  'espeak-v1':       { lang: 'auto', pitch: 35, speed: 155 },
+  'espeak-robosoft': { lang: 'auto', pitch: 40, speed: 160, variant: 'robosoft' },
+  'espeak-whisper':  { lang: 'auto', pitch: 40, speed: 150, variant: 'whisper' },
+  'espeak-croak':    { lang: 'auto', pitch: 35, speed: 150, variant: 'croak' },
+  'espeak-en':       { lang: 'en-us', pitch: 40, speed: 160 },
+  'espeak-ru':       { lang: 'ru', pitch: 40, speed: 160 }
 };
 let espeakMod = null;
 async function espeakWav(text, voice) {
@@ -218,7 +239,8 @@ async function espeakWav(text, voice) {
     espeakMod = (await import('./dist/espeak/espeak-ng.js')).default;
   }
   const c = ESPEAK[voice];
-  const lang = c.lang === 'auto' ? (/[а-яё]/i.test(text) ? 'ru' : 'en-us') : c.lang;
+  const base = c.lang === 'auto' ? (/[а-яё]/i.test(text) ? 'ru' : 'en-us') : c.lang;
+  const lang = base + (c.variant ? '+' + c.variant : '');
   const m = await espeakMod({
     arguments: ['-w', 'o.wav', '-v', lang, '-p', String(c.pitch), '-s', String(c.speed), text],
     print() {}, printErr() {}
@@ -231,7 +253,15 @@ async function espeakWav(text, voice) {
 // through its reciter; Cyrillic is transliterated (its reciter is English).
 // buf8 is 8-bit unsigned PCM @ 22050; wrap it as a 16-bit WAV so it flows
 // through the same play/stitch path (the 8-bit character is preserved).
-const SAMJS = { 'sam-c64': { pitch: 72, speed: 72, mouth: 128, throat: 128 } };
+// Classic C64 SAM voices from the original manual (pitch/speed/mouth/throat).
+const SAMJS = {
+  'sam-c64':     { pitch: 64, speed: 72,  mouth: 128, throat: 128 }, // default SAM
+  'sam-elf':     { pitch: 64, speed: 72,  mouth: 110, throat: 160 },
+  'sam-robot':   { pitch: 60, speed: 92,  mouth: 190, throat: 190 }, // Little Robot
+  'sam-stuffy':  { pitch: 72, speed: 105, mouth: 110, throat: 105 }, // Stuffy Guy
+  'sam-oldlady': { pitch: 32, speed: 145, mouth: 145, throat: 145 }, // Little Old Lady
+  'sam-alien':   { pitch: 64, speed: 100, mouth: 150, throat: 200 }  // Extra-Terrestrial
+};
 function samjsWav(text, voice) {
   const cfg = SAMJS[voice];
   const u8 = new SamJs({ debug: false, ...cfg }).buf8(forSam(text), false);
