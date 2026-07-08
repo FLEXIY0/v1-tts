@@ -364,8 +364,15 @@ function playUrl(url, revoke) {
     audio.playbackRate = state.rate;
     audio.preservesPitch = true;
     audio.onended = () => { if (revoke) URL.revokeObjectURL(url); resolve(); };
-    audio.onerror = () => { if (revoke) URL.revokeObjectURL(url); reject(new Error('playback failed')); };
-    audio.play().catch(reject);
+    audio.onerror = () => {
+      if (revoke) URL.revokeObjectURL(url);
+      const c = audio.error && audio.error.code;
+      // code 4 = SRC_NOT_SUPPORTED/unreachable, 2 = network
+      reject(new Error(c === 4 || c === 2 ? 'Sam service unreachable — try a Piper voice' : 'playback failed'));
+    };
+    audio.play().catch(e => reject(new Error(
+      e && e.name === 'NotAllowedError' ? 'playback blocked by browser' : (e && e.message || 'playback failed')
+    )));
   });
 }
 function play(blob) { return playUrl(URL.createObjectURL(blob), true); }
