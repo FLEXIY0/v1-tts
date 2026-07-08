@@ -168,6 +168,7 @@
     <div class="row">
       <span>preset</span>
       <select id="preset">
+        <option value="c64">C64 SAM grit</option>
         <option value="v1">Improved SAM (V1)</option>
         <option value="robot">Heavy robot</option>
         <option value="human">Human (clean)</option>
@@ -176,8 +177,8 @@
 
     <div class="row">
       <span>robot</span>
-      <input type="range" id="robot" min="0" max="100" step="5" value="30">
-      <span id="robot-v">30%</span>
+      <input type="range" id="robot" min="0" max="100" step="5" value="65">
+      <span id="robot-v">65%</span>
     </div>
 
     <div class="actions">
@@ -198,7 +199,7 @@
 import * as tts from './dist/piper.js';
 
 const $ = id => document.getElementById(id);
-const state = { token: 0, audio: null, rate: 1, robot: 0.3, preset: null, session: null, voiceId: null, samProxyBad: false };
+const state = { token: 0, audio: null, rate: 1, robot: 0.65, preset: null, session: null, voiceId: null, samProxyBad: false };
 
 // Local engine: espeak-ng compiled to WASM (~18 MB, data embedded). A robotic
 // formant synthesizer in the same family as Microsoft Sam — intelligible,
@@ -363,11 +364,29 @@ function driveCurve(k) {
 // preset = the timbre (character); the robot slider = how much of it to mix.
 // Presets keep Piper's clarity underneath, so the machine flavour never
 // makes the words unreadable — an intelligible take on the SAM/V1 sound.
+// decimTo = sample-and-hold target rate (aliasing grit, the vintage buzz);
+// gain = makeup drive toward SAM's hot, saturated level. Measured against the
+// bundled C64 SAM: it runs ~3x louder (RMS .25 vs .08) and ~1.6x brighter in
+// HF (.15 vs .09) and is 8-bit — the 'c64' preset reproduces exactly that.
 const PRESETS = {
-  human: { carrier: 0,  bits: 16, lp: 8000, drive: 0,    wet: 0    },
-  v1:    { carrier: 62, bits: 7,  lp: 3200, drive: 0.35, wet: 0.55 }, // improved SAM
-  robot: { carrier: 48, bits: 6,  lp: 2600, drive: 0.55, wet: 0.85 }  // heavier machine
+  human: { carrier: 0,  bits: 16, lp: 8000, drive: 0,    decimTo: 0,    gain: 1,   wet: 0    },
+  v1:    { carrier: 62, bits: 7,  lp: 3200, drive: 0.35, decimTo: 0,    gain: 1,   wet: 0.55 }, // improved SAM
+  c64:   { carrier: 0,  bits: 8,  lp: 7000, drive: 0.15, decimTo: 8000, gain: 1.3, wet: 1    }, // C64-SAM grit (metric-matched)
+  robot: { carrier: 48, bits: 6,  lp: 2600, drive: 0.55, decimTo: 0,    gain: 1.2, wet: 0.85 }  // heavier machine
 };
+// Sample-and-hold decimation + makeup gain, applied to the rendered buffer.
+function postProcess(buf, p) {
+  const d = buf.getChannelData(0);
+  if (p.decimTo) {
+    const step = Math.max(1, Math.round(buf.sampleRate / p.decimTo));
+    if (step > 1) for (let i = 0; i < d.length; i += step) {
+      for (let j = 1; j < step && i + j < d.length; j++) d[i + j] = d[i];
+    }
+  }
+  if (p.gain && p.gain !== 1) for (let i = 0; i < d.length; i++) {
+    d[i] = Math.max(-1, Math.min(1, d[i] * p.gain));
+  }
+}
 function encodeWav(buf) {
   const ch = buf.getChannelData(0), rate = buf.sampleRate;
   const out = new Uint8Array(44 + ch.length * 2), v = new DataView(out.buffer);
@@ -417,7 +436,9 @@ async function robotize(blob, amount) {
   lp.connect(wetG).connect(off.destination);
 
   src.start();
-  return encodeWav(await off.startRendering());
+  const rendered = await off.startRendering();
+  postProcess(rendered, p);
+  return encodeWav(rendered);
 }
 
 function playUrl(url, revoke) {
@@ -615,7 +636,12 @@ $('download').addEventListener('click', async () => {
 
 // Local-only hooks for the headless test harness; never exposed in production.
 if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-  window.__test = { session, robotize };
+  window.__test = {
+    session, robotize, espeakWav,
+    setPreset: k => { state.preset = PRESETS[k]; },
+    setPresetObj: o => { state.preset = o; },
+    setRobot: v => { state.robot = v; }
+  };
 }
 </script>
 </body>

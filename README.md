@@ -59,11 +59,20 @@ synthesized while the current one plays, so playback starts quickly.
 `Download WAV` renders the whole text and stitches the chunks into one file.
 
 `preset` gives the clean voice a machine character with an offline Web
-Audio pass (soft-clip drive + ring modulation + bit-crush + lowpass):
-*Improved SAM (V1)* is the SAM/V1 robot sound kept intelligible over the
-neural voice, *Heavy robot* is more aggressive, *Human* is bypass. The
-`robot` slider scales how much of the preset's character is mixed in
-(0 % = clean voice). All of this runs in-browser — no extra downloads.
+Audio pass (soft-clip drive + optional ring modulation + bit-crush +
+lowpass, plus sample-and-hold decimation and makeup gain):
+
+- *C64 SAM grit* (default) reproduces the vintage Commodore-64 SAM texture.
+  Its parameters were fitted to the bundled C64 SAM engine's measured
+  output — SAM runs ~3× hotter (RMS ≈ 0.25 vs 0.08) and 8-bit with more
+  high-frequency grit — so espeak's clarity gets SAM's loudness, saturation
+  and aliasing on top.
+- *Improved SAM (V1)* is a cleaner ring-modulated robot, *Heavy robot* is
+  more aggressive, *Human* is bypass.
+
+The `robot` slider scales how much of the preset's character is mixed with
+the clean voice (0 % = clean, 100 % = full grit). All of this runs
+in-browser — no extra downloads.
 
 `dist/piper.js` is `@mintplex-labs/piper-tts-web` bundled with esbuild,
 with `onnxruntime-web` pinned to 1.18.0 to match the WASM assets the page
