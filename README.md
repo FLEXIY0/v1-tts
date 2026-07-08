@@ -15,10 +15,21 @@ Open `index.html` in a browser (or the demo link). Two engines:
 - **Microsoft Sam — V1** (default): the authentic ULTRAKILL "V1" voice —
   Microsoft Sam (SAPI4) at pitch 200 / speed 180, served by
   [tetyys.com](https://www.tetyys.com/SAPI4/). Robotic but clearly
-  intelligible. Played through a media element (no CORS needed); Cyrillic
-  is transliterated since Sam is an English formant synth. Requires the
-  tetyys service to be online. `Download` opens the WAV in a new tab
-  (the bytes can't be read cross-origin to stitch).
+  intelligible. Cyrillic is transliterated since Sam is an English formant
+  synth. By default it plays through a media element straight from tetyys
+  (no CORS needed), and `Download` opens the WAV in a new tab. For reliable
+  playback plus a real stitched download, run the optional proxy below.
+
+### Optional: Microsoft Sam proxy
+
+tetyys sends no CORS headers, so the browser can play its audio but can't
+read the bytes to post-process or stitch a download, and direct playback
+depends on tetyys being reachable from the client. `proxy/sam-proxy.js` is
+a ~30-line Cloudflare Worker that fetches the SAPI4 audio server-side and
+re-serves it with CORS. Deploy it (steps are in the file header), then open
+the site once as `…/v1-tts/?proxy=https://<your-worker-url>` — the page
+remembers it in `localStorage`, and the V1 voice then works everywhere with
+full download support.
 - **Piper** voices: neural TTS running fully in-browser (see below). Pick
   a specific voice or `Piper — auto` (Cyrillic → Russian, else English).
   The `preset`/`robot` effect applies to these only.
