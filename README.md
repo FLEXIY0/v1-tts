@@ -10,8 +10,18 @@ Demo: https://flexiy0.github.io/v1-tts/
 
 ## Usage
 
-Open `index.html` in a browser (or the demo link). Pick a voice or leave
-`auto` — Cyrillic input selects a Russian voice, anything else English.
+Open `index.html` in a browser (or the demo link). Two engines:
+
+- **Microsoft Sam — V1** (default): the authentic ULTRAKILL "V1" voice —
+  Microsoft Sam (SAPI4) at pitch 200 / speed 180, served by
+  [tetyys.com](https://www.tetyys.com/SAPI4/). Robotic but clearly
+  intelligible. Played through a media element (no CORS needed); Cyrillic
+  is transliterated since Sam is an English formant synth. Requires the
+  tetyys service to be online. `Download` opens the WAV in a new tab
+  (the bytes can't be read cross-origin to stitch).
+- **Piper** voices: neural TTS running fully in-browser (see below). Pick
+  a specific voice or `Piper — auto` (Cyrillic → Russian, else English).
+  The `preset`/`robot` effect applies to these only.
 
 The first synthesis downloads the runtime and the selected voice:
 onnxruntime WASM (~10 MB, cdnjs), the espeak-ng phonemizer data (~18 MB,
