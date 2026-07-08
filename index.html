@@ -158,6 +158,12 @@
       <span id="rate-v">1.0</span>
     </div>
 
+    <div class="row">
+      <span>robot</span>
+      <input type="range" id="robot" min="0" max="100" step="5" value="40">
+      <span id="robot-v">40%</span>
+    </div>
+
     <div class="actions">
       <button id="speak" type="button">Speak</button>
       <button id="stop" type="button">Stop</button>
@@ -176,7 +182,7 @@
 import * as tts from './dist/piper.js';
 
 const $ = id => document.getElementById(id);
-const state = { token: 0, audio: null, rate: 1, session: null, voiceId: null };
+const state = { token: 0, audio: null, rate: 1, robot: 0.4, session: null, voiceId: null };
 
 // First use of a voice downloads its model (~60 MB) from HuggingFace;
 // piper-tts-web caches it in OPFS, so subsequent runs are local.
@@ -234,6 +240,62 @@ function splitText(text, max) {
   return out;
 }
 
+// Give the clean neural voice a machine character without wrecking
+// intelligibility: ring-modulate against a low carrier (small formant
+// smear so words survive), add mild bit-crush grit, tame the top end,
+// then crossfade against the dry voice by the 'robot' amount. 0 = human,
+// 1 = full V1. Rendered offline so playback and download share one path.
+let decodeCtx = null;
+function crushCurve(bits) {
+  const steps = 2 ** bits, n = 2048, curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.round(x * steps) / steps;
+  }
+  return curve;
+}
+function encodeWav(buf) {
+  const ch = buf.getChannelData(0), rate = buf.sampleRate;
+  const out = new Uint8Array(44 + ch.length * 2), v = new DataView(out.buffer);
+  const ascii = (o, s) => { for (let i = 0; i < s.length; i++) out[o + i] = s.charCodeAt(i); };
+  ascii(0, 'RIFF'); v.setUint32(4, 36 + ch.length * 2, true); ascii(8, 'WAVE');
+  ascii(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ascii(36, 'data'); v.setUint32(40, ch.length * 2, true);
+  let p = 44;
+  for (let i = 0; i < ch.length; i++) {
+    const s = Math.max(-1, Math.min(1, ch[i]));
+    v.setInt16(p, s < 0 ? s * 32768 : s * 32767, true); p += 2;
+  }
+  return new Blob([out], { type: 'audio/wav' });
+}
+async function robotize(blob, amount) {
+  if (amount <= 0) return blob;
+  decodeCtx = decodeCtx || new (window.AudioContext || window.webkitAudioContext)();
+  const decoded = await decodeCtx.decodeAudioData(await blob.arrayBuffer());
+  const off = new OfflineAudioContext(1, decoded.length, decoded.sampleRate);
+  const src = off.createBufferSource(); src.buffer = decoded;
+
+  const dry = off.createGain(); dry.gain.value = 1 - amount;
+  const wet = off.createGain(); wet.gain.value = amount * 1.1;
+
+  const ring = off.createGain(); ring.gain.value = 0;
+  const carrier = off.createOscillator();
+  carrier.type = 'sine'; carrier.frequency.value = 55;
+  carrier.connect(ring.gain);
+
+  const shaper = off.createWaveShaper(); shaper.curve = crushCurve(8);
+  const lp = off.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3600;
+
+  src.connect(dry).connect(off.destination);
+  src.connect(ring); ring.connect(shaper); shaper.connect(lp);
+  lp.connect(wet).connect(off.destination);
+
+  carrier.start(); src.start();
+  return encodeWav(await off.startRendering());
+}
+
 function play(blob) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
@@ -277,6 +339,11 @@ $('rate').addEventListener('input', e => {
   if (state.audio) state.audio.playbackRate = state.rate;
 });
 
+$('robot').addEventListener('input', e => {
+  state.robot = +e.target.value / 100;
+  $('robot-v').textContent = e.target.value + '%';
+});
+
 $('speak').addEventListener('click', async () => {
   const token = ++state.token;
   const text = $('text').value.trim();
@@ -288,7 +355,7 @@ $('speak').addEventListener('click', async () => {
     status('Synthesizing');
     let next = s.predict(chunks[0]);
     for (let i = 0; i < chunks.length; i++) {
-      const blob = await next;
+      const blob = await robotize(await next, state.robot);
       if (token !== state.token) return;
       if (i + 1 < chunks.length) next = s.predict(chunks[i + 1]);
       status(chunks.length > 1 ? `Playing ${i + 1}/${chunks.length}` : 'Playing');
@@ -318,7 +385,7 @@ $('download').addEventListener('click', async () => {
     const blobs = [];
     for (let i = 0; i < chunks.length; i++) {
       status(chunks.length > 1 ? `Synthesizing ${i + 1}/${chunks.length}` : 'Synthesizing');
-      blobs.push(await s.predict(chunks[i]));
+      blobs.push(await robotize(await s.predict(chunks[i]), state.robot));
       if (token !== state.token) return;
     }
     const url = URL.createObjectURL(await stitch(blobs));
@@ -332,6 +399,11 @@ $('download').addEventListener('click', async () => {
     if (token === state.token) status('Error: ' + (e.message || e));
   }
 });
+
+// Local-only hooks for the headless test harness; never exposed in production.
+if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+  window.__test = { session, robotize };
+}
 </script>
 </body>
 </html>
