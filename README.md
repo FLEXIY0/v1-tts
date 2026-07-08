@@ -1,46 +1,40 @@
 # v1-tts
 
-Text-to-speech in the browser. JavaScript port of SAM (Software Automatic
-Mouth), a speech synthesizer released for the Commodore 64 in 1982 by
-Don't Ask Software (now SoftVoice, Inc.).
+Neural text-to-speech in the browser. The page runs
+[Piper](https://github.com/rhasspy/piper) voices client-side via
+[piper-tts-web](https://github.com/Mintplex-Labs/piper-tts-web)
+(onnxruntime-web + espeak-ng phonemizer, both WebAssembly). No server, no
+API keys; everything is synthesized locally.
 
 Demo: https://flexiy0.github.io/v1-tts/
 
-The core is based on the C port by [Stefan Macke](https://github.com/s-macke/SAM)
-and refactorings by [Vidar Hokstad](https://github.com/vidarh/SAM) and
-[8BitPimp](https://github.com/8BitPimp/SAM), adapted to JavaScript by
-[discordier](https://github.com/discordier/sam).
-
 ## Usage
 
-Open `index.html` in a browser. No build step required; the bundled core is
-in `dist/samjs.js`.
+Open `index.html` in a browser (or the demo link). Pick a voice or leave
+`auto` — Cyrillic input selects a Russian voice, anything else English.
 
-Parameters: pitch, speed, mouth, throat (0–255). Output can be played back
-or downloaded as WAV. Cyrillic input is transliterated to a Latin phonetic
-approximation before synthesis, since the reciter only handles English text.
+The first synthesis downloads the runtime and the selected voice:
+onnxruntime WASM (~10 MB, cdnjs), the espeak-ng phonemizer data (~18 MB,
+jsdelivr) and the voice model (~63 MB, HuggingFace). The voice model is
+cached in browser storage (OPFS) and the CDN assets in the HTTP cache, so
+later runs are effectively instant. Expect a noticeable wait on the very
+first run.
 
-## API
+Long texts are split into sentence-sized chunks; the next chunk is
+synthesized while the current one plays, so playback starts quickly.
+`rate` changes playback speed (0.5–2.0) without affecting pitch.
+`Download WAV` renders the whole text and stitches the chunks into one file.
 
-```js
-var sam = new SamJs({ pitch: 64, speed: 72, mouth: 128, throat: 128 });
-sam.speak(text);      // render and play, returns a Promise
-sam.download(text);   // render and download as WAV
-sam.buf8(text);       // Uint8Array, 8-bit unsigned PCM
-sam.buf32(text);      // Float32Array
-```
+`dist/piper.js` is `@mintplex-labs/piper-tts-web` bundled with esbuild,
+with `onnxruntime-web` pinned to 1.18.0 to match the WASM assets the page
+loads from the CDN (`esbuild entry.js --bundle --format=esm --minify` with
+node builtins aliased to an empty module).
 
-## Development
+## Legacy SAM core
 
-```
-yarn install
-yarn build
-yarn test
-```
-
-## License
-
-The synthesizer is a reverse-engineered version of commercial software
-published more than 30 years ago. The copyright holder is SoftVoice, Inc.
-(www.text2speech.com); the original software is effectively abandonware.
-No open-source license can be granted. Use at your own risk.
+The repository also contains a JavaScript port of SAM (Software Automatic
+Mouth, Commodore 64, 1982) in `src/` and `dist/samjs.js` — the engine this
+site used originally. It is a reverse-engineered version of commercial
+software whose copyright holder is SoftVoice, Inc.; effectively
+abandonware, no open-source license can be granted. Piper voices carry
+their own licenses (see the model cards on HuggingFace).

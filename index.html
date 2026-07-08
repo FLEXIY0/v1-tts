@@ -19,7 +19,7 @@
   }
   .window {
     width: 100%;
-    max-width: 420px;
+    max-width: 460px;
     background: #c0c0c0;
     border: 1px solid #000;
     box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #808080, 2px 2px 0 rgba(0,0,0,.3);
@@ -47,23 +47,33 @@
   }
   .body { padding: 10px; }
   label { display: block; margin-bottom: 3px; }
-  input[type=text] {
+  textarea {
     width: 100%;
+    height: 90px;
     padding: 3px 4px;
     font: inherit;
     background: #fff;
     border: 2px solid;
     border-color: #808080 #fff #fff #808080;
     outline: none;
+    resize: vertical;
   }
-  .param {
+  .row {
     display: grid;
-    grid-template-columns: 42px 1fr 28px;
+    grid-template-columns: 42px 1fr 34px;
     gap: 8px;
     align-items: center;
     margin-top: 8px;
   }
-  .param span:last-child { text-align: right; }
+  .row span:last-child { text-align: right; }
+  select {
+    font: inherit;
+    background: #fff;
+    border: 2px solid;
+    border-color: #808080 #fff #fff #808080;
+    padding: 2px;
+    grid-column: 2 / 4;
+  }
   input[type=range] {
     -webkit-appearance: none;
     appearance: none;
@@ -109,6 +119,7 @@
     border-color: #404040 #fff #fff #404040;
     box-shadow: none;
   }
+  button:disabled { color: #808080; text-shadow: 1px 1px 0 #fff; }
   .statusbar {
     margin-top: 12px;
     display: flex;
@@ -127,15 +138,29 @@
   <div class="body">
 
     <label for="text">Text</label>
-    <input type="text" id="text" value="Hello, world." spellcheck="false" autocomplete="off">
+    <textarea id="text" spellcheck="false">Привет. Это нейросетевой синтез речи прямо в браузере.</textarea>
 
-    <div class="param"><span>pitch</span>  <input type="range" id="pitch"  min="0" max="255" value="64">  <span id="pitch-v">64</span></div>
-    <div class="param"><span>speed</span>  <input type="range" id="speed"  min="1" max="255" value="72">  <span id="speed-v">72</span></div>
-    <div class="param"><span>mouth</span>  <input type="range" id="mouth"  min="0" max="255" value="128"> <span id="mouth-v">128</span></div>
-    <div class="param"><span>throat</span> <input type="range" id="throat" min="0" max="255" value="128"> <span id="throat-v">128</span></div>
+    <div class="row">
+      <span>voice</span>
+      <select id="voice">
+        <option value="auto">auto (by language)</option>
+        <option value="ru_RU-irina-medium">Irina — Russian</option>
+        <option value="ru_RU-ruslan-medium">Ruslan — Russian</option>
+        <option value="ru_RU-denis-medium">Denis — Russian</option>
+        <option value="en_US-hfc_female-medium">HFC Female — English</option>
+        <option value="en_US-lessac-medium">Lessac — English</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <span>rate</span>
+      <input type="range" id="rate" min="0.5" max="2" step="0.1" value="1">
+      <span id="rate-v">1.0</span>
+    </div>
 
     <div class="actions">
       <button id="speak" type="button">Speak</button>
+      <button id="stop" type="button">Stop</button>
       <button id="download" type="button">Download WAV</button>
     </div>
 
@@ -147,224 +172,166 @@
   </div>
 </div>
 
-<script src="dist/samjs.js"></script>
-<script>
-(function () {
-  'use strict';
+<script type="module">
+import * as tts from './dist/piper.js';
 
-  var opts = { pitch: 64, speed: 72, mouth: 128, throat: 128 };
-  var $ = function (id) { return document.getElementById(id); };
+const $ = id => document.getElementById(id);
+const state = { token: 0, audio: null, rate: 1, session: null, voiceId: null };
 
-  // Cyrillic is mapped straight to synthesizer phonemes instead of going
-  // through the English text rules, which mispronounce transliterations.
-  // A word-level pass approximates Russian phonology: stress placement,
-  // vowel reduction, /j/ glides, final devoicing and common orthographic
-  // exceptions — without it the output is flat and unintelligible.
-  var CONS = {
-    'б':'B','в':'V','г':'G','д':'D','ж':'ZH','з':'Z','й':'Y','к':'K',
-    'л':'L','м':'M','н':'N','п':'P','р':'R','с':'S','т':'T','ф':'F',
-    'х':'/H','ц':'TS','ч':'CH','ш':'SH','щ':'SH'
-  };
-  var VOWELS = 'аеёиоуыэюя';
-  var FIX = { 'что':'што', 'чтобы':'штобы', 'сегодня':'севодня', 'конечно':'канешна' };
-  // Function words carry no stress of their own.
-  var CLITICS = ' в во на под подо за из изо у о об обо от ото с со к ко по до при без безо не ни же ли бы б и а но да или уж ведь вот ';
-  // 1-based stressed-vowel index for frequent words the penultimate-vowel
-  // heuristic gets wrong.
-  var STRESS = {
-    'время':1,'времени':1,'человек':3,'человека':3,'человечество':3,
-    'система':2,'системы':2,'системе':2,'классический':2,'игнорировать':3,
-    'компьютер':2,'программа':2,'программы':2,'интернет':3,'язык':2,
-    'языка':2,'хорошо':3,'очень':1,'быстро':1,'тогда':2,'когда':2,
-    'всегда':2,'никогда':3,'иногда':3,'потом':2,'почему':3,'потому':3,
-    'сейчас':2,'теперь':2,'вообще':3,'например':3,'работа':2,'работает':2,
-    'говорит':3,'говорить':3,'большой':2,'маленький':1,'новый':1,
-    'первый':1,'последний':2,'машина':2,'музыка':1,'свобода':2
-  };
+// First use of a voice downloads its model (~60 MB) from HuggingFace;
+// piper-tts-web caches it in OPFS, so subsequent runs are local.
+// Runtime assets are pinned to the onnxruntime build bundled into piper.js
+// (1.18.0) and the phonemizer the library targets; the voice model is the
+// only thing fetched per-voice and cached in OPFS.
+const WASM_PATHS = {
+  onnxWasm: 'https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.18.0/',
+  piperData: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.data',
+  piperWasm: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.wasm'
+};
 
-  function ruWord(word) {
-    var clitic = CLITICS.indexOf(' ' + word + ' ') >= 0;
-    var dictStress = STRESS[word];
-    word = FIX[word] || word;
-    var genitive = /([ое])го$/.test(word);
-    word = word
-      .replace(/([ое])го$/, '$1во')   // -ого/-его endings sound as -ово/-ево
-      .replace(/ть?ся$/, 'ца')        // -тся/-ться reflexives sound as -ца
-      .replace(/б$/,'п').replace(/в$/,'ф').replace(/г$/,'к')  // final
-      .replace(/д$/,'т').replace(/ж$/,'ш').replace(/з$/,'с') // devoicing
-      .replace(/([бвгджзклмнпрстфхцчшщ])\1/g, '$1'); // double consonants
+function voiceFor(text) {
+  const v = $('voice').value;
+  if (v !== 'auto') return v;
+  return /[а-яё]/i.test(text) ? 'ru_RU-irina-medium' : 'en_US-hfc_female-medium';
+}
 
-    var ch = word.split('');
-    var vPos = [];
-    ch.forEach(function (c, i) { if (VOWELS.indexOf(c) >= 0) vPos.push(i); });
+function status(msg) { $('status').textContent = msg; }
 
-    // Stress: dictionary first; 'ё' is always stressed; genitive endings
-    // stress the final vowel; clitics take none; otherwise fall back to
-    // the penultimate vowel, the single most common position.
-    var stressAt = -1;
-    if (dictStress && vPos.length >= dictStress) stressAt = vPos[dictStress - 1];
-    else if (word.indexOf('ё') >= 0) stressAt = word.indexOf('ё');
-    else if (clitic) stressAt = -1;
-    else if (genitive && vPos.length) stressAt = vPos[vPos.length - 1];
-    else if (vPos.length === 1) stressAt = vPos[0];
-    else if (vPos.length > 1) stressAt = vPos[vPos.length - 2];
+function onProgress(p) {
+  if (p.total > 1e6) status(`Downloading voice ${Math.round(p.loaded / p.total * 100)}%`);
+}
 
-    var out = '';
-    ch.forEach(function (c, i) {
-      var stressed = i === stressAt;
-      var hard = 'жшц'.indexOf(ch[i - 1]) >= 0; // же→жэ, жи→жы etc.
-      var ph = '';
-      switch (c) {
-        case 'а': ph = 'AA'; break;
-        case 'о': ph = stressed ? 'OH' : 'AH'; break;  // unstressed о → а
-        case 'е': ph = (stressed ? 'EH' : 'IH'); if (!hard) ph = 'Y' + ph; break;
-        case 'ё': ph = hard ? 'OH' : 'YOH'; break;
-        case 'и': ph = hard ? 'IH' : 'IY'; break;
-        case 'ы': ph = 'IH'; break;
-        case 'у': ph = 'UW'; break;
-        case 'э': ph = 'EH'; break;
-        case 'ю': ph = hard ? 'UW' : 'YUW'; break;
-        case 'я': ph = (stressed ? 'AA' : 'AH'); if (!hard) ph = 'Y' + ph; break;
-        case 'ь': ph = 'ао'.indexOf(ch[i + 1]) >= 0 ? 'Y' : ''; break;
-        case 'ъ': ph = ''; break;
-        default: ph = CONS[c] || '';
-      }
-      if (!ph) return;
-      if (VOWELS.indexOf(c) >= 0) ph += stressed ? '3' : '6';
-      out += ph;
-    });
-    return out;
+// The library keys a single session off a static field and does NOT reload
+// the model when the voice changes, so switch voices by resetting it and
+// building a fresh session. Same voice reuses the loaded model.
+async function session(voiceId) {
+  if (state.session && state.voiceId === voiceId) return state.session;
+  tts.TtsSession._instance = null;
+  status('Loading voice');
+  const s = new tts.TtsSession({ voiceId, progress: onProgress, wasmPaths: WASM_PATHS });
+  await s.waitReady;
+  state.session = s;
+  state.voiceId = voiceId;
+  return s;
+}
+
+// Sentence-sized chunks keep time-to-first-audio low; the next chunk is
+// synthesized while the current one plays.
+function splitText(text, max) {
+  const out = [];
+  const sentences = text.replace(/\s+/g, ' ').match(/[^.!?…]+[.!?…]*\s*/g) || [text];
+  for (let s of sentences) {
+    s = s.trim();
+    while (s.length > max) {
+      let cut = s.lastIndexOf(',', max);
+      if (cut < max * 0.4) cut = s.lastIndexOf(' ', max);
+      if (cut <= 0) cut = max;
+      out.push(s.slice(0, cut + 1).trim());
+      s = s.slice(cut + 1).trim();
+    }
+    if (s) out.push(s);
   }
+  return out;
+}
 
-  function toPhonemes(text) {
-    // Latin words go through the built-in reciter; Cyrillic words through
-    // ruWord. Only " . ? , -" are valid phonetic punctuation.
-    return text.split(/([A-Za-z']+)/).map(function (seg) {
-      if (!seg) return '';
-      if (/[A-Za-z]/.test(seg)) {
-        var conv = SamJs.convert(seg);
-        return typeof conv === 'string' ? conv : '';
-      }
-      return seg.toLowerCase()
-        .replace(/[0-9]+/g, ' ')
-        .replace(/[а-яё]+/g, ruWord)
-        .replace(/[!;:]/g, '.')
-        .replace(/[^A-Z0-9 .,?\/-]/g, ' ')
-        .replace(/ +/g, '-'); // short pause between words: keeps them apart
-    }).join(' ');
+function play(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    state.audio = audio;
+    audio.playbackRate = state.rate;
+    audio.preservesPitch = true;
+    audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+    audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('playback failed')); };
+    audio.play().catch(reject);
+  });
+}
+
+// Piper returns 16-bit mono WAVs of identical format, so concatenating the
+// PCM bodies under one fresh header yields a single valid file.
+async function stitch(blobs) {
+  const bodies = [];
+  let rate = 22050;
+  for (const b of blobs) {
+    const buf = new DataView(await b.arrayBuffer());
+    rate = buf.getUint32(24, true);
+    bodies.push(new Uint8Array(buf.buffer, 44));
   }
+  const dataLen = bodies.reduce((n, a) => n + a.length, 0);
+  const out = new Uint8Array(44 + dataLen);
+  const v = new DataView(out.buffer);
+  const ascii = (o, s) => { for (let i = 0; i < s.length; i++) out[o + i] = s.charCodeAt(i); };
+  ascii(0, 'RIFF'); v.setUint32(4, 36 + dataLen, true); ascii(8, 'WAVE');
+  ascii(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ascii(36, 'data'); v.setUint32(40, dataLen, true);
+  let pos = 44;
+  for (const a of bodies) { out.set(a, pos); pos += a.length; }
+  return new Blob([out], { type: 'audio/wav' });
+}
 
-  // Phonetic (Russian) chunks are rendered slower than the slider value:
-  // an unfamiliar accent needs more time per phoneme to stay intelligible.
-  function samFor(req) {
-    if (!req.phonetic) return new SamJs(opts);
-    var slowed = {};
-    Object.keys(opts).forEach(function (k) { slowed[k] = opts[k]; });
-    slowed.speed = Math.min(255, Math.round(opts.speed * 1.4));
-    return new SamJs(slowed);
+$('rate').addEventListener('input', e => {
+  state.rate = +e.target.value;
+  $('rate-v').textContent = state.rate.toFixed(1);
+  if (state.audio) state.audio.playbackRate = state.rate;
+});
+
+$('speak').addEventListener('click', async () => {
+  const token = ++state.token;
+  const text = $('text').value.trim();
+  if (!text) return;
+  const chunks = splitText(text, 300);
+  try {
+    const s = await session(voiceFor(text));
+    if (token !== state.token) return;
+    status('Synthesizing');
+    let next = s.predict(chunks[0]);
+    for (let i = 0; i < chunks.length; i++) {
+      const blob = await next;
+      if (token !== state.token) return;
+      if (i + 1 < chunks.length) next = s.predict(chunks[i + 1]);
+      status(chunks.length > 1 ? `Playing ${i + 1}/${chunks.length}` : 'Playing');
+      await play(blob);
+      if (token !== state.token) return;
+    }
+    status('Ready');
+  } catch (e) {
+    if (token === state.token) status('Error: ' + (e.message || e));
   }
+});
 
-  function prepare(text) {
-    if (/[а-яёА-ЯЁ]/.test(text)) return { text: toPhonemes(text), phonetic: true };
-    return { text: text, phonetic: false };
-  }
+$('stop').addEventListener('click', () => {
+  state.token++;
+  if (state.audio) state.audio.pause();
+  status('Ready');
+});
 
-  // The synthesizer has a ~256-entry phoneme buffer; long input overflows it
-  // and intonation degrades into mush. Feed it one phrase at a time instead.
-  var MAX = 80;
-  function splitText(text) {
-    var out = [];
-    var sentences = text.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]*\s*/g) || [text];
-    sentences.forEach(function (s) {
-      s = s.trim();
-      while (s.length > MAX) {
-        var cut = s.lastIndexOf(',', MAX);
-        if (cut < MAX * 0.4) cut = s.lastIndexOf(' ', MAX);
-        if (cut <= 0) cut = MAX;
-        out.push(s.slice(0, cut + 1).trim());
-        s = s.slice(cut + 1).trim();
-      }
-      if (s) out.push(s);
-    });
-    return out;
-  }
-
-  var RATE = 22050;
-  var GAP = Math.round(RATE * 0.28); // inter-phrase silence, samples
-
-  function renderChunks(chunks) {
-    return chunks.map(function (c) {
-      var req = prepare(c);
-      var b = samFor(req).buf8(req.text, req.phonetic);
-      if (!(b instanceof Uint8Array)) throw new Error('synthesis failed');
-      return b;
-    });
-  }
-
-  function downloadWav(bufs) {
-    var total = bufs.reduce(function (n, b) { return n + b.length; }, 0) + GAP * (bufs.length - 1);
-    var wav = new Uint8Array(44 + total);
-    var v = new DataView(wav.buffer);
-    var ascii = function (off, s) { for (var i = 0; i < s.length; i++) wav[off + i] = s.charCodeAt(i); };
-    ascii(0, 'RIFF');  v.setUint32(4, 36 + total, true);
-    ascii(8, 'WAVE');  ascii(12, 'fmt ');
-    v.setUint32(16, 16, true);   v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-    v.setUint32(24, RATE, true); v.setUint32(28, RATE, true);
-    v.setUint16(32, 1, true);    v.setUint16(34, 8, true);
-    ascii(36, 'data'); v.setUint32(40, total, true);
-    wav.fill(128, 44); // 8-bit unsigned silence
-    var pos = 44;
-    bufs.forEach(function (b) { wav.set(b, pos); pos += b.length + GAP; });
-    var url = URL.createObjectURL(new Blob([wav], { type: 'audio/vnd.wave' }));
-    var a = document.createElement('a');
+$('download').addEventListener('click', async () => {
+  const token = ++state.token;
+  const text = $('text').value.trim();
+  if (!text) return;
+  const chunks = splitText(text, 300);
+  try {
+    const s = await session(voiceFor(text));
+    if (token !== state.token) return;
+    const blobs = [];
+    for (let i = 0; i < chunks.length; i++) {
+      status(chunks.length > 1 ? `Synthesizing ${i + 1}/${chunks.length}` : 'Synthesizing');
+      blobs.push(await s.predict(chunks[i]));
+      if (token !== state.token) return;
+    }
+    const url = URL.createObjectURL(await stitch(blobs));
+    const a = document.createElement('a');
     a.href = url;
     a.download = 'v1-tts.wav';
     a.click();
     URL.revokeObjectURL(url);
+    status('Ready');
+  } catch (e) {
+    if (token === state.token) status('Error: ' + (e.message || e));
   }
-
-  function status(msg) { $('status').textContent = msg; }
-
-  Object.keys(opts).forEach(function (p) {
-    $(p).addEventListener('input', function (e) {
-      opts[p] = +e.target.value;
-      $(p + '-v').textContent = e.target.value;
-    });
-  });
-
-  var playToken = 0;
-
-  $('speak').addEventListener('click', function () {
-    var token = ++playToken;
-    var chunks = splitText($('text').value);
-    if (!chunks.length) { status('Ready'); return; }
-    var i = 0;
-    (function next() {
-      if (token !== playToken) return;
-      if (i >= chunks.length) { status('Ready'); return; }
-      status(chunks.length > 1 ? 'Playing ' + (i + 1) + '/' + chunks.length : 'Playing');
-      var req = prepare(chunks[i++]);
-      var p;
-      try { p = samFor(req).speak(req.text, req.phonetic); } catch (e) { status('Synthesis failed'); return; }
-      if (p && typeof p.then === 'function') {
-        p.then(function () { setTimeout(next, 280); }, function () { status('Synthesis failed'); });
-      } else {
-        next();
-      }
-    })();
-  });
-
-  $('download').addEventListener('click', function () {
-    playToken++;
-    var chunks = splitText($('text').value);
-    if (!chunks.length) { status('Ready'); return; }
-    status('Rendering');
-    try {
-      downloadWav(renderChunks(chunks));
-      status('Ready');
-    } catch (e) { status('Synthesis failed'); }
-  });
-})();
+});
 </script>
 </body>
 </html>
