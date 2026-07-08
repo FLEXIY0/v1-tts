@@ -1,49 +1,95 @@
-Remade: Anonimu'#9775
+# v1-tts
 
-# SAM Software Automatic Mouth
+Neural text-to-speech in the browser. The page runs
+[Piper](https://github.com/rhasspy/piper) voices client-side via
+[piper-tts-web](https://github.com/Mintplex-Labs/piper-tts-web)
+(onnxruntime-web + espeak-ng phonemizer, both WebAssembly). No server, no
+API keys; everything is synthesized locally.
 
-## What is SAM?
+Demo: https://flexiy0.github.io/v1-tts/
 
-Sam is a very small Text-To-Speech (TTS) program written in C, that
-runs on most popular platforms.
+## Usage
 
-It is an adaption to Javascript of the speech software SAM (Software
-Automatic Mouth) for the Commodore C64 published in the year 1982 by
-Don't Ask Software (now SoftVoice, Inc.).
+Open `index.html` in a browser (or the demo link). Several engines:
 
-It is based on the adaption to C by
-[Stefan Macke](https://github.com/s-macke/SAM)
-and the refactorings by 
-[Vidar Hokstad](https://github.com/vidarh/SAM) and
-[8BitPimp](https://github.com/8BitPimp/SAM)
+- **eSpeak** (default): a local robotic formant voice —
+  [espeak-ng](https://github.com/espeak-ng/espeak-ng) compiled to
+  WebAssembly (`dist/espeak/`, ~18 MB, language data embedded). Runs fully
+  in the browser with no server and no network, and speaks **Russian and
+  English natively** (no transliteration). Same "computer voice" family as
+  Microsoft Sam, clearly intelligible; the `preset`/`robot` effect layers a
+  machine character on top. The engine loads on first use and is cached.
+  Variants: V1, RoboSoft, Whisper, Croak.
+- **C64 SAM** (local): the original 1982 Commodore-64 SAM engine
+  (`dist/samjs.js`) — genuinely 8-bit and crunchy. Classic manual voices:
+  default, Elf, Little Robot, Stuffy Guy, Little Old Lady, Extra-Terrestrial.
+  Cyrillic is transliterated (its reciter is English). Already grit, so the
+  effect is disabled for it.
 
-It aims for low memory impact and file size which is the reason I want
-to avoid the 
-[Emscripten conversion](http://simulationcorner.net/index.php?page=sam)
-by Stefan (which weights about 414kb).
+- **Microsoft Sam — V1** (default): the authentic ULTRAKILL "V1" voice —
+  Microsoft Sam (SAPI4), served by [tetyys.com](https://www.tetyys.com/SAPI4/).
+  Robotic but clearly intelligible. The community "V1" is pitch 200 / speed
+  180; the picker also offers aggressive (faster) and dark (lower) variants.
+  SAPI4's ranges are pitch 50–200 and speed 30–450, and values are clamped
+  to them. Cyrillic is transliterated since Sam is an English formant synth.
+  By default it plays through a media element straight from tetyys (no CORS
+  needed), and `Download` opens the WAV in a new tab. For reliable playback
+  plus a stitched download, run the optional proxy below — if a configured
+  proxy fails (e.g. tetyys blocks its datacenter IPs), the page falls back
+  to direct playback automatically.
 
-#Description of repository
+### Optional: Microsoft Sam proxy
 
-As you know , everyone is looking for a sam version with download one , so i made one. Enjoy of this code , its not 100% open-source but you can use it at your own risk.
+tetyys sends no CORS headers, so the browser can play its audio but can't
+read the bytes to post-process or stitch a download, and direct playback
+depends on tetyys being reachable from the client. `proxy/sam-proxy.js` is
+a ~30-line Cloudflare Worker that fetches the SAPI4 audio server-side and
+re-serves it with CORS. Deploy it (steps are in the file header), then open
+the site once as `…/v1-tts/?proxy=https://<your-worker-url>` — the page
+remembers it in `localStorage`, and the V1 voice then works everywhere with
+full download support.
+- **Piper** voices: neural TTS running fully in-browser (see below). Pick
+  a specific voice or `Piper — auto` (Cyrillic → Russian, else English).
+  The `preset`/`robot` effect applies to these only.
 
-## Original docs.
+The first synthesis downloads the runtime and the selected voice:
+onnxruntime WASM (~10 MB, cdnjs), the espeak-ng phonemizer data (~18 MB,
+jsdelivr) and the voice model (~63 MB, HuggingFace). The voice model is
+cached in browser storage (OPFS) and the CDN assets in the HTTP cache, so
+later runs are effectively instant. Expect a noticeable wait on the very
+first run.
 
-I have bundled a copy of the original manual in this repository, see
-the [manual](docs/manual.md) file in the [docs](docs) directory.
+Long texts are split into sentence-sized chunks; the next chunk is
+synthesized while the current one plays, so playback starts quickly.
+`rate` changes playback speed (0.5–2.0) without affecting pitch.
+`Download WAV` renders the whole text and stitches the chunks into one file.
 
-## License
+`preset` gives the clean voice a machine character with an offline Web
+Audio pass (soft-clip drive + optional ring modulation + bit-crush +
+lowpass, plus sample-and-hold decimation and makeup gain):
 
-The software is a reverse-engineered version of a commercial software
-published more than 30 years ago. The current copyright holder is 
-SoftVoice, Inc. (www.text2speech.com)
+- *C64 SAM grit* (default) reproduces the vintage Commodore-64 SAM texture.
+  Its parameters were fitted to the bundled C64 SAM engine's measured
+  output — SAM runs ~3× hotter (RMS ≈ 0.25 vs 0.08) and 8-bit with more
+  high-frequency grit — so espeak's clarity gets SAM's loudness, saturation
+  and aliasing on top.
+- *Improved SAM (V1)* is a cleaner ring-modulated robot, *Heavy robot* is
+  more aggressive, *Human* is bypass.
 
-Any attempt to contact the company failed. The website was last
-updated in the year 2009. The status of the original
-software can therefore best described as Abandonware
-(http://en.wikipedia.org/wiki/Abandonware)
+The `robot` slider scales how much of the preset's character is mixed with
+the clean voice (0 % = clean, 100 % = full grit). All of this runs
+in-browser — no extra downloads.
 
-As long this is the case I cannot put my code under any specific open
-source software license Use it at your own risk.
+`dist/piper.js` is `@mintplex-labs/piper-tts-web` bundled with esbuild,
+with `onnxruntime-web` pinned to 1.18.0 to match the WASM assets the page
+loads from the CDN (`esbuild entry.js --bundle --format=esm --minify` with
+node builtins aliased to an empty module).
 
-If you have questions don' t hesitate to ask me. If you discovered some
-new knowledge about the code please file an issue.
+## Legacy SAM core
+
+The repository also contains a JavaScript port of SAM (Software Automatic
+Mouth, Commodore 64, 1982) in `src/` and `dist/samjs.js` — the engine this
+site used originally. It is a reverse-engineered version of commercial
+software whose copyright holder is SoftVoice, Inc.; effectively
+abandonware, no open-source license can be granted. Piper voices carry
+their own licenses (see the model cards on HuggingFace).
